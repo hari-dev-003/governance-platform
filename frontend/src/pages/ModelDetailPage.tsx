@@ -159,7 +159,6 @@ export default function ModelDetailPage() {
                   ))}
                 </ul>
               </div>) : null}
-              {explain.engine === 'weights' && <p className="text-sm text-amber-600 mt-2">SHAP/LIME not installed on the backend - install requirements-governance.txt.</p>}
             </div>
           )}
         </Card>

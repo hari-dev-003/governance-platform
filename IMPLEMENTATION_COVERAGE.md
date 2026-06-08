@@ -168,21 +168,24 @@ is hidden.
 
 ## I. Specified tool stack (per request)
 
-The named industry tools are integrated at each stage (see `TOOLS_BY_STAGE.md`):
+The named tools are **required core engines** (installed by `uv sync`), each the single
+engine for its stage; results are surfaced only in this platform. See `TOOLS_BY_STAGE.md`.
 
 | Stage | Tool | Status |
 |-------|------|--------|
-| Cataloging | OpenMetadata (REST API) | [x] integrated; REST client verified via mock transport |
+| Cataloging | Native RDBMS introspection (Postgres / MySQL / MS SQL) | [x] no OpenMetadata; reads information_schema |
 | Lineage | sqlglot + React Flow | [x] |
-| Data Quality | Great Expectations | [x] integrated (`from_pandas` + expectations) |
-| Data Privacy | Microsoft Presidio | [x] integrated (per-source strategy) |
-| Bias & Fairness | Fairlearn | [x] integrated (MetricFrame + parity/odds) |
-| Explainability | SHAP + LIME | [x] integrated (surrogate sklearn model) |
-| Model Monitoring | Evidently AI | [x] integrated (DataDriftPreset) |
-| Drift Detection | alibi-detect | [x] integrated (KSDrift) |
+| Data Quality | Great Expectations | [x] core dependency |
+| Data Privacy | Microsoft Presidio | [x] core dependency (per-source) |
+| Bias & Fairness | Fairlearn | [x] core dependency |
+| Explainability | SHAP + LIME | [x] core dependency |
+| Model Monitoring | Evidently AI | [x] core dependency |
+| Drift Detection | alibi-detect (KSDrift) | [x] core dependency |
 
-**Validation note:** app boots with all 72 routes; the privacy endpoint, OpenMetadata REST
-client, and every fallback engine were validated. The heavy ML wheels (shap/evidently/etc.)
-could not be installed inside the build sandbox, so a live run of those engines happens on
-your machine after `pip install -r requirements-governance.txt`. Each endpoint's `engine`
-field confirms which engine executed (real tool vs. `builtin` fallback).
+**Lightweight design:** OpenMetadata removed; cataloging is native. Celery/Redis, cloud
+connector SDKs, ODBC and parquet are **not** in core (optional extras). Drift uses
+alibi-detect's scipy-based KSDrift (no TensorFlow at runtime). Engines are imported lazily so
+startup stays fast. App boots with 69 routes and 14 connectors (incl. native MySQL); the
+frontend type-checks and builds clean. The heavy ML wheels could not be installed inside the
+build sandbox, so a live run of those engines happens on your machine after `uv sync`; each
+endpoint's `engine` field confirms the tool that executed.

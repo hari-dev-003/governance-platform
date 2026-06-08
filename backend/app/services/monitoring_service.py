@@ -1,28 +1,15 @@
-"""Model monitoring powered by Evidently AI.
+"""Model monitoring - Evidently AI (only engine).
 
-Builds Evidently reports (Data Drift + Data Quality presets) from a reference and a
-current dataset, and returns a compact, UI-friendly summary. Degrades to a simple
-column-overlap summary only if evidently is unavailable.
+Builds an Evidently DataDriftPreset report from reference vs current datasets and
+returns a compact, UI-friendly summary.
 """
 from __future__ import annotations
 
 from typing import List
 
 
-def evidently_available() -> bool:
-    try:
-        import evidently  # noqa: F401
-        return True
-    except Exception:
-        return False
-
-
 def data_drift_report(reference: List[dict], current: List[dict]) -> dict:
-    """Engine: Evidently AI DataDriftPreset + DataQualityPreset."""
-    if not (evidently_available() and reference and current):
-        return {"engine": "unavailable", "dataset_drift": None,
-                "note": "evidently not installed or insufficient data"}
-
+    """Engine: Evidently AI (DataDriftPreset)."""
     import pandas as pd
     from evidently.report import Report
     from evidently.metric_preset import DataDriftPreset
@@ -39,9 +26,8 @@ def data_drift_report(reference: List[dict], current: List[dict]) -> dict:
     drift_metric = next((m for m in result.get("metrics", [])
                          if m.get("metric") == "DatasetDriftMetric"), None)
     summary = (drift_metric or {}).get("result", {})
-    by_col_metric = next((m for m in result.get("metrics", [])
-                          if m.get("metric") == "DataDriftTable"), None)
-    columns = (by_col_metric or {}).get("result", {}).get("drift_by_columns", {})
+    table = next((m for m in result.get("metrics", []) if m.get("metric") == "DataDriftTable"), None)
+    columns = (table or {}).get("result", {}).get("drift_by_columns", {})
     per_column = [
         {"column": c, "drift_detected": v.get("drift_detected"),
          "drift_score": round(float(v.get("drift_score", 0) or 0), 4),

@@ -19,8 +19,6 @@ from app.models.identity import User
 from app.models.sources import DataSource
 from app.services import audit
 from app.services.crawl_service import crawl_source
-from app.services.openmetadata_service import publish_source
-from app.integrations.openmetadata import is_enabled as omd_enabled
 
 router = APIRouter(prefix="/sources", tags=["sources"])
 
@@ -132,22 +130,6 @@ async def crawl_now(source_id: uuid.UUID, background: BackgroundTasks,
     background.add_task(_bg, source_id)
     return {"status": "queued", "source_id": str(source_id),
             "message": "Crawl started in background. Refresh the catalog shortly."}
-
-
-@router.post("/{source_id}/publish-openmetadata")
-async def publish_to_openmetadata(source_id: uuid.UUID, db: AsyncSession = Depends(get_db),
-                                  user: User = Depends(admin_or_steward)):
-    """Publish this source's catalog into OpenMetadata (cataloging system-of-record)."""
-    src = await db.get(DataSource, source_id)
-    if not src or src.org_id != user.org_id:
-        raise HTTPException(404, "source not found")
-    if not omd_enabled():
-        raise HTTPException(400, "OpenMetadata is not configured. Set OPENMETADATA_ENABLED=true, "
-                                 "OPENMETADATA_URL and OPENMETADATA_JWT_TOKEN in .env")
-    result = await publish_source(db, user.org_id, source_id)
-    await audit.record(db, org_id=user.org_id, user_id=user.id, action="catalog.published_openmetadata",
-                       resource_type="data_source", resource_id=str(source_id), resource_name=src.name)
-    return result
 
 
 @router.delete("/{source_id}", status_code=204)

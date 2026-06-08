@@ -6,6 +6,7 @@ import { PageHeader, Card, Button, Badge, Table, Empty } from '../components/ui'
 const CONFIG_HINTS: Record<string, string[]> = {
   postgresql: ['host', 'port', 'database', 'username', 'password'],
   mssql: ['host', 'port', 'database', 'username', 'password'],
+  mysql: ['host', 'port', 'database', 'username', 'password'],
   aws_s3: ['aws_access_key_id', 'aws_secret_access_key', 'region'],
   redshift: ['host', 'port', 'database', 'username', 'password'],
   mlflow: ['tracking_uri'],
@@ -32,9 +33,6 @@ export default function SourcesPage() {
     onSuccess: (r: any) => setMsg(r.success ? `✓ ${r.message}` : `✗ ${r.message}`) });
   const crawl = useMutation({ mutationFn: (id: string) => sourcesApi.crawl(id),
     onSuccess: (r: any) => setMsg(r.message) });
-  const publish = useMutation({ mutationFn: (id: string) => sourcesApi.publishOpenMetadata(id),
-    onSuccess: (r: any) => setMsg('OpenMetadata: ' + JSON.stringify(r)),
-    onError: (e: any) => setMsg('OpenMetadata: ' + (e?.response?.data?.detail || 'failed')) });
   const remove = useMutation({ mutationFn: (id: string) => sourcesApi.remove(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sources'] }) });
 
@@ -88,7 +86,6 @@ export default function SourcesPage() {
                 <td className="py-2 px-3 flex gap-2">
                   <Button variant="ghost" onClick={() => test.mutate(s.id)}>Test</Button>
                   <Button variant="ghost" onClick={() => crawl.mutate(s.id)}>Scan</Button>
-                  <Button variant="ghost" onClick={() => publish.mutate(s.id)}>OpenMetadata</Button>
                   <Button variant="danger" onClick={() => remove.mutate(s.id)}>Delete</Button>
                 </td>
               </tr>

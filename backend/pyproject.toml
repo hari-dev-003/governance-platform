@@ -1,0 +1,72 @@
+[project]
+name = "governance-platform-backend"
+version = "1.0.0"
+description = "Data + AI Governance Platform - FastAPI backend (uv-managed)"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+
+# Core = API + the required governance engines + ALL connector SDKs.
+# Every connector is installed and available, but a connector only ever runs for a data
+# source you have configured with credentials (lazy-loaded by the registry on demand).
+dependencies = [
+    # --- API ---
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "pydantic==2.10.4",
+    "pydantic-settings==2.7.1",
+    "python-multipart==0.0.20",
+    "email-validator==2.2.0",
+    # --- Database / migrations ---
+    "sqlalchemy[asyncio]==2.0.36",
+    "asyncpg==0.30.0",          # PostgreSQL + Redshift (native)
+    "aiomysql==0.2.0",          # MySQL (native)
+    "aioodbc==0.5.0",           # MS SQL Server (also needs a system ODBC driver)
+    "pyodbc==5.2.0",
+    "psycopg2-binary==2.9.10",  # sync engine for Alembic
+    "alembic==1.14.0",
+    # --- Auth / security ---
+    "python-jose[cryptography]==3.3.0",
+    "passlib[bcrypt]==1.7.4",
+    "bcrypt==4.2.1",
+    "cryptography==44.0.0",
+    # --- Data / lineage ---
+    "sqlglot==25.34.0",
+    "pandas==2.2.3",
+    "numpy==1.26.4",
+    "pyarrow==18.1.0",          # parquet schema inference (S3/Azure lakes)
+    "httpx==0.28.1",
+    # --- Connector SDKs (all included; activated only by a configured source) ---
+    "boto3==1.35.92",                    # AWS S3 (lake), SageMaker (registry), IAM
+    "azure-storage-blob==12.24.0",       # Azure Blob (lake)
+    "azure-identity==1.19.0",
+    "azure-ai-ml==1.23.0",               # Azure ML (registry)
+    "google-cloud-bigquery==3.27.0",     # BigQuery (warehouse)
+    "google-cloud-aiplatform==1.75.0",   # Vertex AI (registry)
+    "mlflow==2.19.0",                    # MLflow (registry)
+    "PyGithub==2.5.0",                   # GitHub ETL (lineage source)
+    "gitpython==3.1.43",
+    "python-keycloak==5.1.1",            # Keycloak (IAM)
+    # --- Required governance-tool engines ---
+    "great-expectations==0.18.22",   # Data Quality
+    "presidio-analyzer==2.2.355",    # Data Privacy / PII
+    "presidio-anonymizer==2.2.355",
+    "spacy==3.7.5",                  # Presidio NLP (needs: spacy download en_core_web_sm)
+    "scikit-learn==1.5.2",           # surrogate models for SHAP/LIME
+    "fairlearn==0.11.0",             # Bias & fairness
+    "shap==0.46.0",                  # Explainability (global)
+    "lime==0.2.0.1",                 # Explainability (local)
+    "evidently==0.4.40",             # Model monitoring
+    "alibi-detect==0.12.0",          # Drift detection (KSDrift)
+]
+
+[project.optional-dependencies]
+# Background workers (optional; crawls also run as FastAPI background tasks).
+#   uv sync --extra workers
+workers = [
+    "celery==5.4.0",
+    "redis==5.2.1",
+]
+
+# Application (not a library): uv should not build/install the project itself.
+[tool.uv]
+package = false

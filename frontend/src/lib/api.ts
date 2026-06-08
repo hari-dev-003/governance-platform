@@ -50,7 +50,6 @@ export const sourcesApi = {
   test: async (id: string) => (await api.post(`/sources/${id}/test`)).data,
   crawl: async (id: string) => (await api.post(`/sources/${id}/crawl`)).data,
   remove: async (id: string) => (await api.delete(`/sources/${id}`)).data,
-  publishOpenMetadata: async (id: string) => (await api.post(`/sources/${id}/publish-openmetadata`)).data,
 };
 
 export const assetsApi = {
@@ -123,9 +122,7 @@ export const biasApi = {
 };
 
 export const explainApi = {
-  engines: async () => (await api.get('/explainability/engines')).data,
   explain: async (p: any) => (await api.post('/explainability/explain', p)).data,
-  featureImportance: async (p: any) => (await api.post('/explainability/feature-importance', p)).data,
 };
 
 export const monitoringApi = {

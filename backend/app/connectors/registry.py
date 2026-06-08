@@ -16,6 +16,7 @@ from app.connectors.base import BaseConnector, ConnectorType
 _REGISTRY: Dict[ConnectorType, Tuple[str, str]] = {
     ConnectorType.POSTGRESQL: ("app.connectors.databases.postgresql", "PostgreSQLConnector"),
     ConnectorType.MSSQL: ("app.connectors.databases.mssql", "MSSQLConnector"),
+    ConnectorType.MYSQL: ("app.connectors.databases.mysql", "MySQLConnector"),
     ConnectorType.AWS_S3: ("app.connectors.datalakes.aws_s3", "AWSS3Connector"),
     ConnectorType.AZURE_BLOB: ("app.connectors.datalakes.azure_blob", "AzureBlobConnector"),
     ConnectorType.BIGQUERY: ("app.connectors.warehouses.bigquery", "BigQueryConnector"),

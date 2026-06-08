@@ -14,13 +14,19 @@ Install these if you don't have them:
 
 1. **Python 3.11 or newer** - https://www.python.org/downloads/
    (During install, tick **"Add Python to PATH"**.)
-2. **Node.js 18 or newer** - https://nodejs.org/ (LTS).
-3. **PostgreSQL** - you already run it in Docker under WSL.
+2. **uv** (Python package manager) - in **PowerShell**:
+   ```powershell
+   powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+   ```
+   Close and reopen PowerShell afterwards so `uv` is on PATH.
+3. **Node.js 18 or newer** - https://nodejs.org/ (LTS).
+4. **PostgreSQL** - you already run it in Docker under WSL.
 
 Verify everything (open **PowerShell**):
 
 ```powershell
 python --version      # e.g. Python 3.12.x
+uv --version          # e.g. uv 0.5.x
 node --version        # e.g. v20.x
 npm --version         # e.g. 10.x
 ```
@@ -68,26 +74,19 @@ Test-NetConnection localhost -Port 5432    # TcpTestSucceeded : True
 cd F:\DAI\data-governance-platform\governance-platform\backend
 ```
 
-### 2.2  Create and activate a virtual environment
+### 2.2  Install dependencies with uv
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+uv sync
 ```
-You should now see `(.venv)` at the start of the prompt.
-
-> If PowerShell blocks the script, run this once, then re-activate:
-> `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`
-
-### 2.3  Install the core dependencies
-```powershell
-pip install -r requirements.txt
-```
+This automatically creates a `.venv` and installs every core dependency from
+`pyproject.toml` (and writes a `uv.lock`). You do **not** need to activate the venv -
+just prefix commands with `uv run`.
 
 ### 2.4  Configure the `.env` file
 A `.env` already exists. Open it and set a credential-vault key.
 Generate one:
 ```powershell
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 Copy the printed value into `backend\.env` on this line:
 ```
@@ -104,13 +103,13 @@ DB_NAME=datagov
 
 ### 2.5  Create the database tables (migration)
 ```powershell
-alembic upgrade head
+uv run alembic upgrade head
 ```
 This creates all 24 tables. (Run it again any time with no harm.)
 
 ### 2.6  Start the API
 ```powershell
-uvicorn app.main:app --reload --port 8000
+uv run uvicorn app.main:app --reload --port 8000
 ```
 On first start it seeds the admin user + rules + compliance frameworks.
 
@@ -144,7 +143,7 @@ npm run dev
 
 ## STEP 4 — First run (try it)
 
-1. **Sources** -> **+ Add Source** -> choose `postgresql`, fill host=`localhost`, port=`5432`,
+1. **Sources** -> **+ Add Source** -> choose `postgresql` (or `mysql`), fill host=`localhost`, port=`5432`,
    database=`datagov`, username=`user`, password=`admin123` -> **Save**.
 2. Click **Test** (should say connected), then **Scan** (discovers the tables).
 3. **Catalog** -> see discovered assets; open one, edit metadata, run quality.
@@ -154,29 +153,23 @@ npm run dev
 
 ---
 
-## STEP 5 (OPTIONAL) — Activate the specific governance engines
+## STEP 5 — Presidio language model (required once)
 
-The named tools (Great Expectations, Presidio, Fairlearn, SHAP, LIME, Evidently, alibi-detect)
-are optional installs. Without them the features still work via built-in fallbacks; with them,
-the real engines run (each API response shows an `"engine"` field).
+The governance engines (Great Expectations, Presidio, Fairlearn, SHAP, LIME, Evidently,
+alibi-detect) are installed automatically by `uv sync` in STEP 2.2. Presidio additionally
+needs a small spaCy model - run this once in **Terminal 1**:
 
-In **Terminal 1** (venv active, backend stopped with Ctrl+C):
 ```powershell
-pip install -r requirements-governance.txt
-python -m spacy download en_core_web_sm
+uv run python -m spacy download en_core_web_sm
 ```
-Then restart the API (STEP 2.6). See `TOOLS_BY_STAGE.md` for what each tool powers.
 
-### OpenMetadata (optional cataloging)
-Run the OpenMetadata server separately (Docker), then in `backend\.env`:
-```
-OPENMETADATA_ENABLED=true
-OPENMETADATA_URL=http://localhost:8585/api
-OPENMETADATA_JWT_TOKEN=<an OpenMetadata bot/ingestion-bot JWT>
-```
-Restart the API, then use the **OpenMetadata** button on the Sources page.
+Every governance API response includes an `"engine"` field (e.g. `great_expectations`,
+`presidio`, `fairlearn`, `shap+lime`, `evidently`, `alibi-detect:KSDrift`) confirming the
+real tool ran. See `TOOLS_BY_STAGE.md`.
 
-> Redis/Celery are NOT required - scans run as background tasks in the API.
+> Optional extras (not needed to run): `uv sync --extra workers` (Celery/Redis),
+> `uv sync --extra connectors` (cloud-connector SDKs + ODBC + parquet).
+
 
 ---
 
@@ -185,8 +178,7 @@ Restart the API, then use the **OpenMetadata** button on the Sources page.
 **Terminal 1:**
 ```powershell
 cd F:\DAI\data-governance-platform\governance-platform\backend
-.\.venv\Scripts\Activate.ps1
-uvicorn app.main:app --reload --port 8000
+uv run uvicorn app.main:app --reload --port 8000
 ```
 **Terminal 2:**
 ```powershell
@@ -202,12 +194,12 @@ Open http://localhost:5173.
 | Symptom | Fix |
 |--------|-----|
 | `uvicorn` says DB not reachable | Postgres container not running, or wrong creds in `.env`. Check `docker ps` and STEP 1. |
-| `alembic: command not found` | The venv isn't active - run `.\.venv\Scripts\Activate.ps1` first. |
+| `alembic`/`uvicorn` not found | Prefix with `uv run` (e.g. `uv run alembic upgrade head`), or run `uv sync` first. |
 | Login fails | Make sure the API started without errors (it seeds `admin@local`/`admin123` on first boot). |
 | UI loads but calls fail / CORS | Backend must be running on port 8000; the UI proxies `/api` to it. |
 | `npm run dev` errors | Delete `frontend\node_modules` and run `npm install` again (need Node 18+). |
-| PowerShell won't activate venv | `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`, then retry. |
-| Want to reset all data | `alembic downgrade base` then `alembic upgrade head` (drops + recreates tables). |
+| `uv` not recognized | Reopen PowerShell after installing uv, or restart your machine so PATH updates. |
+| Want to reset all data | `uv run alembic downgrade base` then `uv run alembic upgrade head`. |
 | `python` opens Microsoft Store | Use `py` instead of `python`. |
 
 ---

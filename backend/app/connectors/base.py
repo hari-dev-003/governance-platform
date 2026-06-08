@@ -17,6 +17,7 @@ class ConnectorType(str, enum.Enum):
     # Databases
     POSTGRESQL = "postgresql"
     MSSQL = "mssql"
+    MYSQL = "mysql"
     # Data Lakes
     AWS_S3 = "aws_s3"
     AZURE_BLOB = "azure_blob"
@@ -39,6 +40,7 @@ class ConnectorType(str, enum.Enum):
 CONNECTOR_CATEGORY: Dict[ConnectorType, str] = {
     ConnectorType.POSTGRESQL: "database",
     ConnectorType.MSSQL: "database",
+    ConnectorType.MYSQL: "database",
     ConnectorType.AWS_S3: "datalake",
     ConnectorType.AZURE_BLOB: "datalake",
     ConnectorType.BIGQUERY: "warehouse",

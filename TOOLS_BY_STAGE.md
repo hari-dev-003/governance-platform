@@ -1,45 +1,49 @@
 # Tools by Lifecycle Stage
 
-The specific engine for each stage. Every engine is integrated via its real API and
-lazy-loaded; install `requirements-governance.txt` to activate them. Until then, a
-built-in fallback keeps the same endpoint working (the response reports which engine ran).
+Every engine below is a **required, core dependency** (installed by `uv sync`) and is the
+single real engine for its stage - integrated into the backend, exposed through the platform
+API, with results shown only in this platform's UI. Each API response includes an `"engine"`
+field so you can confirm which tool produced it.
 
 ## Data Governance
 
 | Stage | Tool | Where (backend) | Frontend |
 |-------|------|-----------------|----------|
-| Cataloging | **OpenMetadata** (REST API) | `integrations/openmetadata.py`, `services/openmetadata_service.py`; `POST /sources/{id}/publish-openmetadata` | Sources -> "OpenMetadata" button |
-| Lineage | **sqlglot** (backend) + **React Flow** (frontend) | `connectors/etl/github_etl.py`, `services/lineage_service.py` | Lineage page (React Flow) |
-| Data Quality | **Great Expectations** | `services/quality_service.py` (`from_pandas` + expectations) | Quality / Asset Detail |
-| Data Privacy | **Microsoft Presidio** (per-source: values for DB/WH, name heuristics for lakes) | `services/privacy_service.py`; `POST /privacy/sources/{id}/scan` | Privacy (PII) page |
+| Cataloging | **Native RDBMS introspection** (no OpenMetadata) - reads `information_schema` directly via asyncpg / aiomysql / aioodbc | `connectors/databases/{postgresql,mysql,mssql}.py`, `services/catalog_service.py` | Sources -> Scan; Catalog |
+| Lineage | **sqlglot** (backend) + **React Flow** (frontend) | `connectors/etl/github_etl.py`, `services/lineage_service.py` | Lineage page |
+| Data Quality | **Great Expectations** | `services/quality_service.py` | Quality / Asset Detail |
+| Data Privacy | **Microsoft Presidio** (values for RDBMS, names elsewhere) | `services/privacy_service.py` | Privacy (PII) page |
 
 ## AI Governance
 
 | Stage | Tool | Where (backend) | Frontend |
 |-------|------|-----------------|----------|
-| Bias & Fairness | **Fairlearn** (MetricFrame, demographic_parity / equalized_odds) | `services/bias_service.py` | Model Detail -> Bias tab |
-| Explainability | **SHAP** (global) + **LIME** (local) over a fitted sklearn model | `services/explainability_service.py`; `POST /explainability/explain` | Model Detail -> Explainability tab |
-| Model Monitoring | **Evidently AI** (DataDriftPreset report) | `services/monitoring_service.py`; `POST /monitoring/evidently-report` | Monitoring page |
-| Drift Detection | **alibi-detect** (KSDrift) | `services/drift_service.py`; `POST /monitoring/drift-check` | Monitoring page |
+| Bias & Fairness | **Fairlearn** (MetricFrame + demographic_parity / equalized_odds) | `services/bias_service.py` | Model Detail -> Bias |
+| Explainability | **SHAP** (global) + **LIME** (local) over a sklearn surrogate | `services/explainability_service.py` | Model Detail -> Explainability |
+| Model Monitoring | **Evidently AI** (DataDriftPreset) | `services/monitoring_service.py` | Monitoring page |
+| Drift Detection | **alibi-detect** (KSDrift, scipy-backed - no TensorFlow at runtime) | `services/drift_service.py` | Monitoring page |
 
-## Cross-cutting (unchanged)
+## Native cataloging - supported RDBMS
 
-FastAPI · SQLAlchemy 2.0 async · asyncpg · Alembic · PostgreSQL · JWT (python-jose) ·
-bcrypt · Fernet vault · Celery/Redis (optional) · React 18 + TypeScript + Vite + Tailwind +
-Zustand + TanStack Query + ECharts.
+| Database | Driver | Method |
+|----------|--------|--------|
+| PostgreSQL | asyncpg (core) | `information_schema` schemas/tables/columns |
+| MySQL | aiomysql (core) | `information_schema` tables/columns |
+| MS SQL Server | aioodbc (core; also needs a system ODBC driver) | `INFORMATION_SCHEMA` / `sys.*` |
 
-## Activate the real engines
+## Install (one command)
 
 ```bash
 cd backend
-pip install -r requirements-governance.txt
-python -m spacy download en_core_web_sm        # for Presidio
-# OpenMetadata: run the OMD server (docker) and set in .env:
-#   OPENMETADATA_ENABLED=true
-#   OPENMETADATA_URL=http://localhost:8585/api
-#   OPENMETADATA_JWT_TOKEN=<bot token>
+uv sync                                        # installs core + all required engines
+uv run python -m spacy download en_core_web_sm # Presidio NLP model
 ```
 
-Each endpoint's JSON response includes an `"engine"` field (e.g. `"great_expectations"`,
-`"fairlearn"`, `"shap+lime"`, `"evidently"`, `"alibi-detect:KSDrift"`, `"presidio"`) so you
-can confirm the real tool is running vs. the fallback.
+> **All 14 connectors are included** in the core install (databases, lakes, warehouses, ETL,
+> model registries, IAM). A connector only ever activates for a **data source you configure
+> with credentials** - the registry lazy-loads it on demand (test / scan / quality / privacy);
+> unconfigured connectors never load or run.
+>
+> Only **Celery/Redis** are optional (`uv sync --extra workers`) - background work otherwise
+> runs as FastAPI tasks. `alibi-detect` pulls TensorFlow transitively, but drift uses its
+> scipy-based `KSDrift`, so TensorFlow is never loaded at runtime.

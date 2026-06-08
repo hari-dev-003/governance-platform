@@ -34,7 +34,7 @@ INFRASTRUCTURE PostgreSQL 15/16  |  (Redis optional)
 | Lineage parsing | sqlglot |
 | Data Quality | Great Expectations |
 | Data Privacy / PII | Microsoft Presidio |
-| Cataloging | OpenMetadata (REST API) |
+| Cataloging | Native RDBMS introspection (information_schema) |
 | Bias & Fairness | Fairlearn |
 | Explainability | SHAP + LIME |
 | Model Monitoring | Evidently AI |
@@ -46,7 +46,7 @@ INFRASTRUCTURE PostgreSQL 15/16  |  (Redis optional)
 
 ## 2. Prerequisites
 
-- **Python 3.11+**
+- **Python 3.11+** and **uv** (https://docs.astral.sh/uv/)
 - **Node.js 18+**
 - **PostgreSQL 15/16** - e.g. your Docker container in WSL, reachable on `localhost:5432`.
 
@@ -75,20 +75,24 @@ psql -U postgres -c "CREATE DATABASE datagov OWNER \"user\";"
 
 ## 3. Run the backend
 
+This project uses **uv** for Python dependency management and **uvicorn** to run the API.
+Install uv first (https://docs.astral.sh/uv/):
+
+```bash
+# macOS / Linux:   curl -LsSf https://astral.sh/uv/install.sh | sh
+# Windows (PowerShell):  powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
 ```bash
 cd backend
-python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+uv sync                       # creates .venv and installs all core deps from pyproject.toml
 
 # Create a credential-vault encryption key and put it in backend/.env:
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 #   -> set CREDENTIAL_ENCRYPTION_KEY=<that value> in backend/.env
 
-# Apply the database schema
-alembic upgrade head
-
-# Start the API
-uvicorn app.main:app --reload --port 8000
+uv run alembic upgrade head   # apply the database schema
+uv run uvicorn app.main:app --reload --port 8000   # start the API
 ```
 
 - API docs (Swagger): **http://localhost:8000/docs**
@@ -97,15 +101,16 @@ uvicorn app.main:app --reload --port 8000
 
 **Default login:** `admin@local` / `admin123`
 
-> The specific governance engines (Great Expectations, Presidio, Fairlearn, SHAP, LIME,
-> Evidently, alibi-detect) live in `requirements-governance.txt`:
+> The governance engines (Great Expectations, Presidio, Fairlearn, SHAP, LIME, Evidently,
+> alibi-detect) are **core, required dependencies** - `uv sync` installs them. They are the
+> single real engine per stage; each endpoint reports which `engine` ran. After `uv sync`:
 >
 > ```bash
-> pip install -r requirements-governance.txt
-> python -m spacy download en_core_web_sm     # Presidio NLP
+> uv run python -m spacy download en_core_web_sm     # Presidio NLP model
 > ```
-> They are lazy-loaded; each endpoint reports which `engine` ran. See `TOOLS_BY_STAGE.md`.
-> Cloud connector SDKs (S3, BigQuery, MLflow, ...) are in `requirements-optional.txt`.
+> **All connectors are core** (databases, lakes, warehouses, ETL, model registries, IAM) -
+> but each only runs for a data source you configure with credentials (lazy-loaded on demand).
+> Only Celery/Redis are optional: `uv sync --extra workers`. See `TOOLS_BY_STAGE.md`.
 
 ## 4. Run the frontend
 
@@ -120,8 +125,8 @@ Open **http://localhost:5173** and sign in.
 ### Optional: Celery worker (only if you set up Redis)
 
 ```bash
-celery -A app.core.celery_app worker --loglevel=info
-celery -A app.core.celery_app beat   --loglevel=info     # scheduled crawls/quality/drift
+uv run celery -A app.core.celery_app worker --loglevel=info
+uv run celery -A app.core.celery_app beat   --loglevel=info   # scheduled crawls/quality/drift
 ```
 
 ---
@@ -168,13 +173,15 @@ frontend/
 
 ## 7. Notes on implementation choices
 
-1. **Real engines, lazy-loaded.** The named tools (Great Expectations, Presidio, Fairlearn,
-   SHAP, LIME, Evidently, alibi-detect, OpenMetadata) are integrated via their real APIs and
-   imported only when used, so the core app boots without them. Install
-   `requirements-governance.txt` to activate; each response reports the `engine` used.
-2. **Graceful fallback.** If a governance library is not installed, the same endpoint still
-   works via a built-in implementation (reported as `engine: builtin`) - so nothing breaks
-   before you install the full stack.
+1. **Required real engines.** The named tools (Great Expectations, Presidio, Fairlearn,
+   SHAP, LIME, Evidently, alibi-detect) are core dependencies and the single engine per
+   stage. Each response reports the `engine` used. They are imported lazily so startup stays
+   fast, but they are always installed by `uv sync`.
+2. **Native cataloging.** Cataloging reads database metadata directly from `information_schema`
+   (PostgreSQL via asyncpg, MySQL via aiomysql, MS SQL via aioodbc) - no OpenMetadata.
+3. **All connectors installed, credential-gated.** Every connector SDK ships in core, but a
+   connector activates only when you add a source with credentials for it; credentials are
+   encrypted at rest (Fernet vault) and a connector is imported on demand, never at startup.
 3. **`create_all` on startup** is a dev convenience layered on top of the Alembic migration
    (production path is `alembic upgrade head`).
 4. **Redis/Celery optional** - background work runs via FastAPI background tasks by default.

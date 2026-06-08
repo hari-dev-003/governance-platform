@@ -41,11 +41,6 @@ class Settings(BaseSettings):
     DEFAULT_ORG_NAME: str = "Default Organization"
     DEFAULT_ORG_SLUG: str = "default"
 
-    # ---- OpenMetadata (cataloging integration) ----
-    OPENMETADATA_ENABLED: bool = False
-    OPENMETADATA_URL: str = "http://localhost:8585/api"
-    OPENMETADATA_JWT_TOKEN: str = ""
-
     # ---- CORS ----
     FRONTEND_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
 
