@@ -1,0 +1,101 @@
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { sourcesApi } from '../lib/api';
+import { PageHeader, Card, Button, Badge, Table, Empty } from '../components/ui';
+
+const CONFIG_HINTS: Record<string, string[]> = {
+  postgresql: ['host', 'port', 'database', 'username', 'password'],
+  mssql: ['host', 'port', 'database', 'username', 'password'],
+  aws_s3: ['aws_access_key_id', 'aws_secret_access_key', 'region'],
+  redshift: ['host', 'port', 'database', 'username', 'password'],
+  mlflow: ['tracking_uri'],
+  github_etl: ['github_token', 'repo_name', 'branch', 'path'],
+  keycloak: ['server_url', 'realm', 'admin_username', 'admin_password'],
+};
+
+export default function SourcesPage() {
+  const qc = useQueryClient();
+  const [showWizard, setShowWizard] = useState(false);
+  const { data: sources } = useQuery({ queryKey: ['sources'], queryFn: sourcesApi.list });
+  const { data: types } = useQuery({ queryKey: ['types'], queryFn: sourcesApi.types });
+
+  const [name, setName] = useState('');
+  const [ctype, setCtype] = useState('postgresql');
+  const [cfg, setCfg] = useState<Record<string, string>>({});
+  const [msg, setMsg] = useState('');
+
+  const create = useMutation({
+    mutationFn: () => sourcesApi.create({ name, connector_type: ctype, config: coerce(cfg) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['sources'] }); setShowWizard(false); setName(''); setCfg({}); },
+  });
+  const test = useMutation({ mutationFn: (id: string) => sourcesApi.test(id),
+    onSuccess: (r: any) => setMsg(r.success ? `✓ ${r.message}` : `✗ ${r.message}`) });
+  const crawl = useMutation({ mutationFn: (id: string) => sourcesApi.crawl(id),
+    onSuccess: (r: any) => setMsg(r.message) });
+  const publish = useMutation({ mutationFn: (id: string) => sourcesApi.publishOpenMetadata(id),
+    onSuccess: (r: any) => setMsg('OpenMetadata: ' + JSON.stringify(r)),
+    onError: (e: any) => setMsg('OpenMetadata: ' + (e?.response?.data?.detail || 'failed')) });
+  const remove = useMutation({ mutationFn: (id: string) => sourcesApi.remove(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sources'] }) });
+
+  function coerce(c: Record<string, string>) {
+    const out: any = { ...c };
+    if (out.port) out.port = Number(out.port);
+    return out;
+  }
+  const fields = CONFIG_HINTS[ctype] ?? ['host', 'port', 'database', 'username', 'password'];
+
+  return (
+    <div>
+      <PageHeader title="Data Sources" subtitle="Connect databases, lakes, warehouses, ETL, model registries & IAM"
+        actions={<Button onClick={() => setShowWizard((s) => !s)}>{showWizard ? 'Cancel' : '+ Add Source'}</Button>} />
+      {msg && <div className="mb-4 text-sm bg-slate-100 rounded-lg px-4 py-2">{msg}</div>}
+
+      {showWizard && (
+        <Card className="p-5 mb-6">
+          <h3 className="font-semibold mb-3">New Connection</h3>
+          <div className="grid md:grid-cols-2 gap-3 mb-3">
+            <input placeholder="Connection name" value={name} onChange={(e) => setName(e.target.value)}
+              className="border border-slate-300 rounded-lg px-3 py-2" />
+            <select value={ctype} onChange={(e) => { setCtype(e.target.value); setCfg({}); }}
+              className="border border-slate-300 rounded-lg px-3 py-2">
+              {types?.map((t) => <option key={t.connector_type} value={t.connector_type}>{t.connector_type} ({t.category})</option>)}
+            </select>
+          </div>
+          <div className="grid md:grid-cols-2 gap-3 mb-3">
+            {fields.map((f) => (
+              <input key={f} placeholder={f} type={f.includes('password') || f.includes('secret') ? 'password' : 'text'}
+                value={cfg[f] ?? ''} onChange={(e) => setCfg({ ...cfg, [f]: e.target.value })}
+                className="border border-slate-300 rounded-lg px-3 py-2" />
+            ))}
+          </div>
+          <Button onClick={() => create.mutate()} disabled={!name || create.isPending}>
+            {create.isPending ? 'Saving…' : 'Save Connection'}
+          </Button>
+        </Card>
+      )}
+
+      <Card className="p-5">
+        {sources?.length ? (
+          <Table head={['Name', 'Type', 'Category', 'Status', 'Last Crawled', 'Actions']}>
+            {sources.map((s: any) => (
+              <tr key={s.id} className="border-b border-slate-100">
+                <td className="py-2 px-3 font-medium">{s.name}</td>
+                <td className="py-2 px-3">{s.connector_type}</td>
+                <td className="py-2 px-3">{s.category}</td>
+                <td className="py-2 px-3"><Badge>{s.status}</Badge></td>
+                <td className="py-2 px-3 text-slate-500">{s.last_crawled_at ? new Date(s.last_crawled_at).toLocaleString() : '—'}</td>
+                <td className="py-2 px-3 flex gap-2">
+                  <Button variant="ghost" onClick={() => test.mutate(s.id)}>Test</Button>
+                  <Button variant="ghost" onClick={() => crawl.mutate(s.id)}>Scan</Button>
+                  <Button variant="ghost" onClick={() => publish.mutate(s.id)}>OpenMetadata</Button>
+                  <Button variant="danger" onClick={() => remove.mutate(s.id)}>Delete</Button>
+                </td>
+              </tr>
+            ))}
+          </Table>
+        ) : <Empty message="No sources yet. Add your first connection." />}
+      </Card>
+    </div>
+  );
+}

@@ -1,0 +1,70 @@
+"""Data quality rules + runs."""
+from __future__ import annotations
+
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.v1.deps import admin_or_steward
+from app.core.database import get_db
+from app.core.security import get_current_user
+from app.models.assets import Asset
+from app.models.identity import User
+from app.models.quality import QualityCheckRun, QualityRule
+from app.services import audit
+from app.services.quality_service import QualityService
+
+router = APIRouter(prefix="/quality", tags=["quality"])
+
+
+class RuleIn(BaseModel):
+    asset_id: uuid.UUID
+    name: str
+    dimension: str  # completeness|uniqueness|validity|freshness|accuracy
+    rule_type: str  # not_null|unique|regex|range|freshness
+    rule_config: dict
+    severity: str = "warning"
+
+
+@router.get("/rules")
+async def list_rules(asset_id: uuid.UUID, db: AsyncSession = Depends(get_db),
+                     user: User = Depends(get_current_user)):
+    rows = (await db.execute(select(QualityRule).where(QualityRule.asset_id == asset_id))).scalars().all()
+    return [{"id": str(r.id), "name": r.name, "dimension": r.dimension, "rule_type": r.rule_type,
+             "rule_config": r.rule_config, "severity": r.severity, "is_active": r.is_active} for r in rows]
+
+
+@router.post("/rules", status_code=201)
+async def create_rule(payload: RuleIn, db: AsyncSession = Depends(get_db),
+                      user: User = Depends(admin_or_steward)):
+    rule = QualityRule(org_id=user.org_id, created_by=user.id, **payload.model_dump())
+    db.add(rule)
+    await db.flush()
+    return {"id": str(rule.id)}
+
+
+@router.post("/assets/{asset_id}/run")
+async def run_checks(asset_id: uuid.UUID, db: AsyncSession = Depends(get_db),
+                     user: User = Depends(admin_or_steward)):
+    asset = await db.get(Asset, asset_id)
+    if not asset or asset.org_id != user.org_id:
+        raise HTTPException(404, "asset not found")
+    result = await QualityService(db).run_for_asset(asset)
+    await audit.record(db, org_id=user.org_id, user_id=user.id, action="quality.run",
+                       resource_type="asset", resource_id=str(asset_id), resource_name=asset.name)
+    return result
+
+
+@router.get("/runs")
+async def runs(asset_id: uuid.UUID, limit: int = 20, db: AsyncSession = Depends(get_db),
+               user: User = Depends(get_current_user)):
+    rows = (await db.execute(
+        select(QualityCheckRun).where(QualityCheckRun.asset_id == asset_id)
+        .order_by(QualityCheckRun.run_at.desc()).limit(limit)
+    )).scalars().all()
+    return [{"id": str(r.id), "overall_score": r.overall_score, "total_rules": r.total_rules,
+             "passed_rules": r.passed_rules, "failed_rules": r.failed_rules,
+             "run_at": r.run_at.isoformat() if r.run_at else None} for r in rows]

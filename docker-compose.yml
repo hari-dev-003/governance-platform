@@ -1,0 +1,23 @@
+# Optional helper. You already run Postgres in Docker/WSL, so this is only here
+# if you want a clean, project-local database. Redis/Celery are intentionally
+# omitted — crawls run via FastAPI background tasks (no broker required).
+services:
+  postgres:
+    image: postgres:16
+    container_name: governance_postgres
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: datagov
+    ports:
+      - "5432:5432"
+    volumes:
+      - governance_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d datagov"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  governance_pgdata:
