@@ -12,7 +12,7 @@ from app.connectors.base import ConnectorType
 from app.connectors.credential_vault import vault
 from app.connectors.registry import get_connector
 from app.models.assets import Asset
-from app.models.classification import ClassificationResult, ClassificationRule
+from app.models.classification import ClassificationResult, ClassificationRule, ClassificationRun
 from app.models.sources import DataSource
 
 # Highest sensitivity wins when several rules match the same asset.
@@ -47,7 +47,7 @@ class ClassificationService:
             return bool(rx.search(text) or any(rx.search(str(s)) for s in samples))
         return False
 
-    async def classify_asset(self, asset: Asset) -> list[dict]:
+    async def classify_asset(self, asset: Asset, run_id=None) -> list[dict]:
         rules = await self._active_rules(asset.org_id)
         # gather sample values for column assets
         samples: list[str] = []
@@ -72,7 +72,7 @@ class ClassificationService:
             if self._match(rule, asset.name, samples):
                 res = ClassificationResult(
                     asset_id=asset.id, rule_id=rule.id, detected_category=rule.category,
-                    sensitivity_level=rule.sensitivity_level, confidence_score=0.9,
+                    sensitivity_level=rule.sensitivity_level, confidence_score=0.9, run_id=run_id,
                 )
                 self.db.add(res)
                 matched_levels.append(rule.sensitivity_level)
@@ -84,11 +84,19 @@ class ClassificationService:
         return hits
 
     async def classify_source_columns(self, org_id: uuid.UUID, source_id: uuid.UUID) -> dict:
+        run = ClassificationRun(org_id=org_id, source_id=source_id,
+                                scan_type="classification", engine="rules")
+        self.db.add(run)
+        await self.db.flush()
         cols = (await self.db.execute(
             select(Asset).where(Asset.org_id == org_id, Asset.source_id == source_id,
                                 Asset.asset_type == "column")
         )).scalars().all()
         total_hits = 0
         for c in cols:
-            total_hits += len(await self.classify_asset(c))
-        return {"columns_scanned": len(cols), "classifications": total_hits}
+            total_hits += len(await self.classify_asset(c, run_id=run.id))
+        run.columns_scanned = len(cols)
+        run.total_findings = total_hits
+        await self.db.flush()
+        return {"run_id": str(run.id), "scan_type": "classification", "engine": "rules",
+                "columns_scanned": len(cols), "classifications": total_hits}

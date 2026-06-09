@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Plug, Database, GitBranch, BookOpen, ShieldCheck, Activity,
-  FileLock2, KeyRound, Brain, AlertTriangle, ScrollText, History, LogOut, ShieldAlert, Fingerprint,
+  FileLock2, KeyRound, Brain, AlertTriangle, ScrollText, History, LogOut, ShieldAlert,
 } from 'lucide-react';
 import { useAuth } from '../store/auth';
 
@@ -13,8 +13,7 @@ const SECTIONS: { title: string; items: { to: string; label: string; icon: any }
     { to: '/catalog', label: 'Catalog', icon: Database },
     { to: '/lineage', label: 'Lineage', icon: GitBranch },
     { to: '/glossary', label: 'Glossary', icon: BookOpen },
-    { to: '/classification', label: 'Classification', icon: ShieldCheck },
-    { to: '/privacy', label: 'Privacy (PII)', icon: Fingerprint },
+    { to: '/classification', label: 'Classification & Privacy', icon: ShieldCheck },
     { to: '/quality', label: 'Quality', icon: Activity },
     { to: '/policies', label: 'Policies', icon: FileLock2 },
     { to: '/access', label: 'Access Requests', icon: KeyRound },

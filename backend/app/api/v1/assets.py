@@ -46,7 +46,7 @@ class AssetUpdate(BaseModel):
     is_deprecated: Optional[bool] = None
 
 
-@router.get("", response_model=list[AssetOut])
+@router.get("")
 async def search_assets(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -54,19 +54,38 @@ async def search_assets(
     type: Optional[str] = Query(None),
     sensitivity: Optional[str] = Query(None),
     source_id: Optional[uuid.UUID] = Query(None),
-    limit: int = Query(200, le=1000),
+    domain: Optional[str] = Query(None),
+    has_pii: Optional[bool] = Query(None),
+    sort: str = Query("recent"),       # recent | name | quality
+    limit: int = Query(50, le=500),
+    offset: int = Query(0, ge=0),
 ):
-    stmt = select(Asset).where(Asset.org_id == user.org_id)
+    from sqlalchemy import func
+    conds = [Asset.org_id == user.org_id]
     if q:
-        stmt = stmt.where(or_(Asset.name.ilike(f"%{q}%"), Asset.external_id.ilike(f"%{q}%")))
+        conds.append(or_(Asset.name.ilike(f"%{q}%"), Asset.external_id.ilike(f"%{q}%")))
     if type:
-        stmt = stmt.where(Asset.asset_type == type)
+        conds.append(Asset.asset_type == type)
     if sensitivity:
-        stmt = stmt.where(Asset.sensitivity_level == sensitivity)
+        conds.append(Asset.sensitivity_level == sensitivity)
     if source_id:
-        stmt = stmt.where(Asset.source_id == source_id)
-    stmt = stmt.order_by(Asset.first_seen_at.desc()).limit(limit)
-    return list((await db.execute(stmt)).scalars().all())
+        conds.append(Asset.source_id == source_id)
+    if domain:
+        conds.append(Asset.domain == domain)
+    if has_pii:
+        conds.append(Asset.sensitivity_level.in_(("confidential", "restricted")))
+
+    total = (await db.execute(select(func.count()).select_from(Asset).where(*conds))).scalar() or 0
+    stmt = select(Asset).where(*conds)
+    if sort == "name":
+        stmt = stmt.order_by(Asset.name.asc())
+    elif sort == "quality":
+        stmt = stmt.order_by(Asset.quality_score.desc().nullslast())
+    else:
+        stmt = stmt.order_by(Asset.first_seen_at.desc())
+    rows = (await db.execute(stmt.limit(limit).offset(offset))).scalars().all()
+    items = [AssetOut.model_validate(a).model_dump() for a in rows]
+    return {"total": total, "limit": limit, "offset": offset, "items": items}
 
 
 @router.get("/{asset_id}", response_model=AssetOut)
@@ -104,6 +123,47 @@ async def asset_lineage(asset_id: uuid.UUID, db: AsyncSession = Depends(get_db),
     edges = [{"id": str(e.id), "source": str(e.source_asset_id), "target": str(e.target_asset_id)}
              for e in (list(up) + list(down))]
     return {"nodes": nodes, "edges": edges}
+
+
+@router.get("/{asset_id}/classifications")
+async def asset_classifications(asset_id: uuid.UUID, db: AsyncSession = Depends(get_db),
+                                user: User = Depends(get_current_user)):
+    """PII/classification findings for this asset and its columns."""
+    from app.models.classification import ClassificationResult
+    child_ids = (await db.execute(select(Asset.id).where(Asset.parent_id == asset_id))).scalars().all()
+    ids = [asset_id, *child_ids]
+    rows = (await db.execute(
+        select(ClassificationResult, Asset.name)
+        .join(Asset, Asset.id == ClassificationResult.asset_id)
+        .where(ClassificationResult.asset_id.in_(ids))
+        .order_by(ClassificationResult.detected_at.desc()))).all()
+    return [{"column": name, "category": r.detected_category, "sensitivity": r.sensitivity_level,
+             "confidence": r.confidence_score} for r, name in rows]
+
+
+@router.get("/{asset_id}/sample")
+async def asset_sample(asset_id: uuid.UUID, limit: int = Query(20, le=100),
+                       db: AsyncSession = Depends(get_db),
+                       user: User = Depends(get_current_user)):
+    """Preview sample rows for a table/view via its connector."""
+    from app.connectors.base import ConnectorType
+    from app.connectors.credential_vault import vault
+    from app.connectors.registry import get_connector
+    from app.models.sources import DataSource
+    a = await db.get(Asset, asset_id)
+    if not a or a.org_id != user.org_id:
+        raise HTTPException(404, "asset not found")
+    src = await db.get(DataSource, a.source_id)
+    if not src:
+        return {"columns": [], "rows": []}
+    try:
+        conn = get_connector(ConnectorType(src.connector_type),
+                             {**(src.connection_config or {}), **vault.decrypt(src.encrypted_credentials)})
+        rows = await conn.get_sample_data(a.external_id, limit=limit)
+    except Exception as e:  # noqa: BLE001
+        return {"columns": [], "rows": [], "error": str(e)[:200]}
+    cols = list(rows[0].keys()) if rows else []
+    return {"columns": cols, "rows": [[str(r.get(c)) for c in cols] for r in rows]}
 
 
 @router.patch("/{asset_id}", response_model=AssetOut)

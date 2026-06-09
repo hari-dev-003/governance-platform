@@ -62,6 +62,15 @@ CREATE TABLE payments (
     paid_at      TIMESTAMP
 );
 
+-- ---- analytics target tables (ETL outputs, for column-level lineage) -----
+DROP SCHEMA IF EXISTS analytics CASCADE;
+CREATE SCHEMA analytics;
+CREATE TABLE analytics.customer_revenue   (customer_id INT, country VARCHAR(80), revenue NUMERIC(12,2), order_count INT);
+CREATE TABLE analytics.daily_sales        (order_date DATE, total_revenue NUMERIC(12,2), num_orders INT);
+CREATE TABLE analytics.product_performance(product_id INT, name VARCHAR(120), category VARCHAR(80), units_sold INT, gross_sales NUMERIC(12,2));
+CREATE TABLE analytics.payment_summary    (order_id INT, order_total NUMERIC(12,2), paid_total NUMERIC(12,2));
+CREATE TABLE analytics.customer_360       (customer_id INT, email VARCHAR(160), country VARCHAR(80), orders INT, lifetime_value NUMERIC(12,2));
+
 -- ============================ DATA ==========================================
 
 -- 200 customers with realistic PII values (Presidio will detect email/phone/ssn/ip)

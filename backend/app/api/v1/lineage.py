@@ -29,8 +29,9 @@ async def rebuild(db: AsyncSession = Depends(get_db), user: User = Depends(admin
 
 
 @router.get("/graph")
-async def full_graph(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    return await LineageService(db).graph(user.org_id)
+async def full_graph(level: str = "table", db: AsyncSession = Depends(get_db),
+                     user: User = Depends(get_current_user)):
+    return await LineageService(db).graph(user.org_id, level=level)
 
 
 @router.get("/impact/{asset_id}")

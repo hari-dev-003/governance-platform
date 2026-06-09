@@ -1,8 +1,8 @@
 # Cross-Connector Lineage (repository-driven)
 
 Lineage is built from a connected **code repository of ETL/transform scripts**, and resolves
-across **every connector** (Postgres, MySQL, MS SQL, BigQuery, Redshift, S3, …). Foreign-key
-lineage from relational scans is folded into the same resolver.
+across **every connector** (Postgres, MySQL, MS SQL, BigQuery, Redshift, S3, …). Lineage is
+derived strictly from the ETL scripts (no foreign-key inference).
 
 ## How it works (the chain)
 
@@ -24,8 +24,6 @@ ETL repo  ──parse──►  source→target references  ──resolve──�
 3. **Persist**: an edge row in `lineage_edges` (source→target), with the script recorded as the
    transformation and the confidence stored.
 
-FK lineage from a relational scan is stored on each table the same way and resolved by the same
-engine, so the FK and script graphs merge into one.
 
 ## Connect an ETL repository
 
@@ -61,8 +59,5 @@ Produces edges: `shop.orders → analytics.daily_orders` and `shop.customers →
 each tagged with `build_daily_orders.sql` as the transformation — even if `orders`/`customers`
 live in Postgres and `daily_orders` lives in BigQuery.
 
-## Note on the "processed table in the same DB" case
-A foreign key is **not** created by an ETL job, so FK introspection alone cannot see
-`raw → processed` derivations. That derivation only exists in the transformation code — which is
-exactly what this repository-driven path parses. Connect the repo and the raw→processed lineage
-appears.
+## Why ETL-script-only
+Lineage comes solely from the connected transformation scripts. A foreign key is not created by an ETL job and does not describe derivation, so FK inference is intentionally not used — the raw->processed relationship only exists in the script, which is what this path parses.

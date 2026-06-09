@@ -9,7 +9,6 @@ import AssetDetailPage from './pages/AssetDetailPage';
 import LineagePage from './pages/LineagePage';
 import GlossaryPage from './pages/GlossaryPage';
 import ClassificationPage from './pages/ClassificationPage';
-import PrivacyPage from './pages/PrivacyPage';
 import QualityPage from './pages/QualityPage';
 import PoliciesPage from './pages/PoliciesPage';
 import AccessPage from './pages/AccessPage';
@@ -35,7 +34,6 @@ export default function App() {
                 <Route path="/lineage" element={<LineagePage />} />
                 <Route path="/glossary" element={<GlossaryPage />} />
                 <Route path="/classification" element={<ClassificationPage />} />
-                <Route path="/privacy" element={<PrivacyPage />} />
                 <Route path="/quality" element={<QualityPage />} />
                 <Route path="/policies" element={<PoliciesPage />} />
                 <Route path="/access" element={<AccessPage />} />

@@ -57,7 +57,7 @@ You should see row counts: customers 200, products 50, orders 600, order_items 1
 **What's in it (and why):**
 - `customers` - email, phone, ssn, ip_address, names -> **Privacy (Presidio)** + **Classification**
 - `payments.card_number` (Visa test number) -> **PCI** detection
-- foreign keys (orders->customers, order_items->orders/products, payments->orders) -> **Lineage**
+- ETL scripts in  (Airflow/Python/SQL) -> **Lineage**
 - seeded issues: null emails, duplicate emails, negative `total_amount`, null `status` -> **Quality** failures
 
 ---
@@ -74,8 +74,7 @@ Expect **5 tables** + their columns discovered. Open `customers` to see columns 
 business metadata (description, domain, sensitivity).
 
 ### 3. Lineage  (Lineage page)
-The scan derived lineage from foreign keys. Expect edges:
-`customers -> orders -> order_items`, `products -> order_items`, `orders -> payments`.
+Lineage comes from connected ETL scripts ONLY (no foreign keys). Push the Python/Airflow ETL scripts in backend/scripts/etl/ to a GitHub repo, add an etl_repo/github source, Scan, then Rebuild Lineage. Expect edges such as orders,customers -> customer_revenue and order_items,products -> product_performance.
 
 ### 4. Classification  (Classification page)
 Click **Scan columns** on the sample_shop source. Expect detections (system rules) on
@@ -127,7 +126,7 @@ It prints PASS + the engine used for each stage and ends with
 |---|---------|----------------|----------|
 | 1 | Connect (native RDBMS) | Sources -> Test | "Connected" |
 | 2 | Catalog | Scan -> Catalog | 5 tables + columns |
-| 3 | Lineage | Lineage page | FK-derived edges |
+| 3 | Lineage | connect ETL repo -> Scan -> Rebuild | edges from ETL scripts |
 | 4 | Classification | Classification -> Scan | PII/PCI/PHI/Financial hits |
 | 5 | Privacy (Presidio) | Privacy -> Scan PII | email/phone/ssn/ip/card findings, engine=presidio |
 | 6 | Quality (Great Expectations) | add_quality_rules.py | failures on seeded issues, engine=great_expectations |

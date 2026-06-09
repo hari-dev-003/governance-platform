@@ -19,7 +19,7 @@ from app.connectors.base import ConnectorType
 from app.connectors.credential_vault import vault
 from app.connectors.registry import get_connector
 from app.models.assets import Asset
-from app.models.classification import ClassificationResult
+from app.models.classification import ClassificationResult, ClassificationRun
 from app.models.sources import DataSource
 
 ENTITY_MAP = {
@@ -31,6 +31,24 @@ ENTITY_MAP = {
     "US_DRIVER_LICENSE": ("PII", "restricted"), "MEDICAL_LICENSE": ("PHI", "restricted"),
     "DATE_TIME": ("PII", "internal"), "NRP": ("PII", "confidential"),
 }
+# Higher = more specific / preferred when a column matches several entities.
+ENTITY_PRIORITY = {
+    "CREDIT_CARD": 100, "US_SSN": 95, "IBAN_CODE": 90, "US_BANK_NUMBER": 88,
+    "US_PASSPORT": 86, "US_DRIVER_LICENSE": 84, "MEDICAL_LICENSE": 82,
+    "EMAIL_ADDRESS": 70, "PHONE_NUMBER": 65, "PERSON": 60,
+    "IP_ADDRESS": 55, "NRP": 50, "LOCATION": 40, "DATE_TIME": 10,
+}
+# Reliability of each recognizer: pattern/checksum recognizers are trusted; NER/context
+# recognizers (DATE_TIME, LOCATION, PERSON) are downweighted because they over-fire.
+ENTITY_WEIGHT = {
+    "CREDIT_CARD": 1.0, "US_SSN": 1.0, "IBAN_CODE": 1.0, "US_BANK_NUMBER": 1.0,
+    "US_PASSPORT": 1.0, "US_DRIVER_LICENSE": 1.0, "EMAIL_ADDRESS": 1.0,
+    "IP_ADDRESS": 1.0, "PHONE_NUMBER": 1.0, "MEDICAL_LICENSE": 1.0,
+    "PERSON": 0.75, "LOCATION": 0.55, "NRP": 0.55, "DATE_TIME": 0.5,
+}
+# Minimum RAW Presidio confidence to keep a detection (filters 1%/5% noise).
+SCORE_THRESHOLD = 0.4
+
 _SENS = ["public", "internal", "confidential", "restricted"]
 _SAMPLE_CATEGORIES = {"database", "warehouse"}
 
@@ -61,11 +79,11 @@ class PrivacyService:
         if new > cur:
             asset.sensitivity_level = sensitivity
 
-    async def _record(self, asset: Asset, entity: str, score: float):
+    async def _record(self, asset: Asset, entity: str, score: float, run_id=None):
         category, sensitivity = ENTITY_MAP.get(entity, ("PII", "confidential"))
         self.db.add(ClassificationResult(
             asset_id=asset.id, detected_category=f"{category}:{entity}",
-            sensitivity_level=sensitivity, confidence_score=round(float(score), 3)))
+            sensitivity_level=sensitivity, confidence_score=round(float(score), 3), run_id=run_id))
         self._bump(asset, sensitivity)
 
     async def scan_source(self, org_id: uuid.UUID, source_id: uuid.UUID) -> dict:
@@ -75,6 +93,11 @@ class PrivacyService:
         if source.category in ("iam", "model_registry"):
             return {"strategy": "skipped", "engine": "presidio", "columns_scanned": 0, "findings": 0,
                     "reason": f"{source.category} has no personal-data columns"}
+
+        run = ClassificationRun(org_id=org_id, source_id=source_id,
+                                scan_type="privacy", engine="presidio")
+        self.db.add(run)
+        await self.db.flush()
 
         columns = list((await self.db.execute(
             select(Asset).where(Asset.org_id == org_id, Asset.source_id == source_id,
@@ -108,11 +131,18 @@ class PrivacyService:
             for t in texts:
                 for res in analyzer.analyze(text=t, language="en"):
                     hits[res.entity_type] = max(hits.get(res.entity_type, 0.0), res.score)
-            for entity, score in hits.items():
-                if entity in ENTITY_MAP:
-                    await self._record(col, entity, score)
-                    findings += 1
+            # keep only the single best entity per column (weighted score, then priority)
+            candidates = [(ent, sc) for ent, sc in hits.items()
+                          if ent in ENTITY_MAP and sc >= SCORE_THRESHOLD]
+            if candidates:
+                best = max(candidates,
+                           key=lambda x: (ENTITY_WEIGHT.get(x[0], 0.6) * x[1],
+                                          ENTITY_PRIORITY.get(x[0], 0)))
+                await self._record(col, best[0], best[1], run_id=run.id)
+                findings += 1
 
+        run.columns_scanned = len(columns)
+        run.total_findings = findings
         await self.db.flush()
-        return {"strategy": strategy, "engine": "presidio",
-                "columns_scanned": len(columns), "findings": findings}
+        return {"run_id": str(run.id), "scan_type": "privacy", "strategy": strategy,
+                "engine": "presidio", "columns_scanned": len(columns), "findings": findings}

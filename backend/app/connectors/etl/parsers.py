@@ -40,6 +40,59 @@ def extract_sql_lineage(sql: str, file_path: str) -> List[dict]:
     return edges
 
 
+def extract_column_lineage(sql: str, file_path: str) -> List[dict]:
+    """Per-projection column lineage: target_column <- source_column(s)."""
+    from sqlglot import exp
+    edges: List[dict] = []
+    try:
+        statements = sqlglot.parse(sql, error_level=sqlglot.ErrorLevel.IGNORE)
+    except Exception:  # noqa: BLE001
+        return edges
+    for stmt in statements:
+        if stmt is None:
+            continue
+        select = stmt.find(exp.Select)
+        if select is None:
+            continue
+        # resolve target table + explicit target columns
+        target_table, target_cols = None, []
+        this = getattr(stmt, "this", None)
+        if isinstance(this, exp.Schema):
+            target_table = this.this.name if this.this else None
+            target_cols = [c.name for c in this.expressions if hasattr(c, "name")]
+        elif isinstance(this, exp.Table):
+            target_table = this.name
+        elif this is not None:
+            target_table = getattr(this, "name", None)
+        if not target_table:
+            continue
+        # alias -> real table
+        alias_map = {}
+        for t in select.find_all(exp.Table):
+            alias_map[t.alias_or_name] = t.name
+        for i, proj in enumerate(select.expressions):
+            if i < len(target_cols):
+                out_col = target_cols[i]
+            elif isinstance(proj, exp.Alias):
+                out_col = proj.alias
+            elif isinstance(proj, exp.Column):
+                out_col = proj.name
+            else:
+                out_col = proj.alias_or_name or None
+            if not out_col:
+                continue
+            for cn in proj.find_all(exp.Column):
+                src_tbl = alias_map.get(cn.table, cn.table) or None
+                src_col = cn.name
+                if not src_col:
+                    continue
+                edges.append({
+                    "source_table": src_tbl, "source_column": src_col,
+                    "target_table": target_table, "target_column": out_col,
+                    "transformation_file": file_path})
+    return edges
+
+
 def _qualified(table: "sqlglot.exp.Table") -> str:
     parts = [p.name for p in (table.args.get("catalog"), table.args.get("db"), table.this) if p]
     return ".".join(parts) if parts else table.name
@@ -96,6 +149,7 @@ def analyze_file(file_path: str, content: str) -> Tuple[Dict, List[dict]]:
         else:
             meta["etl_type"] = "sql_script"
             raw = extract_sql_lineage(content, file_path)
+            meta["column_lineage_edges"] = extract_column_lineage(content, file_path)
     elif ext == "py":
         if "from airflow" in content or "DAG(" in content:
             m, raw = parse_airflow(content, file_path)
@@ -109,5 +163,15 @@ def analyze_file(file_path: str, content: str) -> Tuple[Dict, List[dict]]:
                     raw.extend(extract_sql_lineage(sql, file_path))
     else:
         meta["etl_type"] = "unknown"
+    if "column_lineage_edges" not in meta:
+        # derive column lineage from any embedded SQL we already pulled
+        col_edges = []
+        if ext == "py":
+            import re as _re
+            for m in _re.findall(r'"""(.*?)"""|\'\'\'(.*?)\'\'\'', content, _re.S):
+                sqltxt = m[0] or m[1]
+                if _re.search(r"\b(insert|create|merge)\b", sqltxt, _re.I):
+                    col_edges.extend(extract_column_lineage(sqltxt, file_path))
+        meta["column_lineage_edges"] = col_edges
     meta["lineage_edges"] = raw          # persisted so rebuild can re-resolve later
     return meta, raw

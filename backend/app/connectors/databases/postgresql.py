@@ -1,15 +1,11 @@
-"""PostgreSQL connector - native metadata introspection + FK-based lineage (asyncpg)."""
+"""PostgreSQL connector - native metadata introspection (asyncpg). No FK lineage."""
 from __future__ import annotations
 
 from typing import Dict, List, Optional
 
 import asyncpg
 
-from app.connectors.base import (
-    BaseConnector,
-    ConnectionTestResult,
-    DiscoveredAsset,
-)
+from app.connectors.base import BaseConnector, ConnectionTestResult, DiscoveredAsset
 
 
 class PostgreSQLConnector(BaseConnector):
@@ -29,32 +25,11 @@ class PostgreSQLConnector(BaseConnector):
         except Exception as e:  # noqa: BLE001
             return ConnectionTestResult(success=False, message=str(e))
 
-    async def _foreign_keys(self, conn) -> Dict[str, List[dict]]:
-        """Map child table name -> [{parent, column}] from FK constraints (for lineage)."""
-        rows = await conn.fetch(
-            """
-            SELECT tc.table_name AS child_table, kcu.column_name AS child_column,
-                   ccu.table_name AS parent_table
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage kcu
-              ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
-            JOIN information_schema.constraint_column_usage ccu
-              ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
-            WHERE tc.constraint_type = 'FOREIGN KEY'
-            """
-        )
-        fk: Dict[str, List[dict]] = {}
-        for r in rows:
-            fk.setdefault(r["child_table"], []).append(
-                {"parent": r["parent_table"], "column": r["child_column"]})
-        return fk
-
     async def discover(self) -> List[DiscoveredAsset]:
         conn = await self._connect()
         db = self.config["database"]
         assets: List[DiscoveredAsset] = []
         try:
-            fk_map = await self._foreign_keys(conn)
             schemas = await conn.fetch(
                 """
                 SELECT schema_name FROM information_schema.schemata
@@ -76,23 +51,11 @@ class PostgreSQLConnector(BaseConnector):
                     """, schema)
                 for t in tables:
                     table_id = f"{db}.{schema}.{t['table_name']}"
-                    # FK-based lineage: parent table -> this (child) table
-                    raw_lineage = None
-                    fks = fk_map.get(t["table_name"])
-                    if fks:
-                        raw_lineage = [
-                            {"sources": [fk["parent"]], "targets": [t["table_name"]],
-                             "transformation_file": f"FK {t['table_name']}.{fk['column']} -> {fk['parent']}"}
-                            for fk in fks
-                        ]
                     assets.append(DiscoveredAsset(
                         external_id=table_id, name=t["table_name"], asset_type="table",
                         parent_id=f"{db}.{schema}",
                         metadata={"table_type": t["table_type"], "row_count": t["row_count"],
-                                  "last_analyzed": str(t["last_analyze"]),
-                                  "foreign_keys": fks or [],
-                                  "lineage_edges": raw_lineage or []},
-                        raw_lineage=raw_lineage))
+                                  "last_analyzed": str(t["last_analyze"])}))
                     cols = await conn.fetch(
                         """
                         SELECT column_name, data_type, is_nullable, column_default,

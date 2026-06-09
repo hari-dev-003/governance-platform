@@ -80,7 +80,7 @@ class LineageService:
                 LineageEdge.transformation_asset_id == transform_id)
         )).scalar_one_or_none() is not None
 
-    async def _apply_edges(self, org_id, transform_id, edges, index) -> int:
+    async def _apply_edges(self, org_id, transform_id, edges, index, lineage_type="table") -> int:
         created = 0
         for e in edges or []:
             for s in e.get("sources", []) or []:
@@ -92,10 +92,29 @@ class LineageService:
                         continue
                     self.db.add(LineageEdge(
                         org_id=org_id, source_asset_id=sm[0], target_asset_id=tm[0],
-                        transformation_asset_id=transform_id,
+                        transformation_asset_id=transform_id, lineage_type=lineage_type,
                         transformation_logic=e.get("transformation_file"),
                         confidence_score=round(min(sm[1], tm[1]), 2)))
                     created += 1
+        await self.db.flush()
+        return created
+
+    async def _apply_column_edges(self, org_id, transform_id, col_edges, index) -> int:
+        created = 0
+        for e in col_edges or []:
+            s_ref = f"{e.get('source_table')}.{e.get('source_column')}"
+            t_ref = f"{e.get('target_table')}.{e.get('target_column')}"
+            sm, tm = resolve_ref(s_ref, index), resolve_ref(t_ref, index)
+            if not sm or not tm or sm[0] == tm[0]:
+                continue
+            if await self._edge_exists(sm[0], tm[0], transform_id):
+                continue
+            self.db.add(LineageEdge(
+                org_id=org_id, source_asset_id=sm[0], target_asset_id=tm[0],
+                transformation_asset_id=transform_id, lineage_type="column",
+                transformation_logic=e.get("transformation_file"),
+                confidence_score=round(min(sm[1], tm[1]), 2)))
+            created += 1
         await self.db.flush()
         return created
 
@@ -103,20 +122,28 @@ class LineageService:
         """Re-resolve every asset's stored lineage_edges against the current catalog."""
         index = await self._index(org_id)
         assets = (await self.db.execute(
-            select(Asset).where(Asset.org_id == org_id))).scalars().all()
+            select(Asset).where(Asset.org_id == org_id,
+                                Asset.asset_type == "etl_pipeline"))).scalars().all()
         created = 0
         pipelines = 0
         for a in assets:
-            edges = (a.technical_metadata or {}).get("lineage_edges")
-            if not edges:
+            md = a.technical_metadata or {}
+            t_edges = md.get("lineage_edges") or []
+            c_edges = md.get("column_lineage_edges") or []
+            if not t_edges and not c_edges:
                 continue
             pipelines += 1
-            created += await self._apply_edges(org_id, a.id, edges, index)
+            created += await self._apply_edges(org_id, a.id, t_edges, index, "table")
+            created += await self._apply_column_edges(org_id, a.id, c_edges, index)
         return {"assets_with_lineage": pipelines, "edges_created": created}
 
-    async def graph(self, org_id: uuid.UUID) -> dict:
-        edges = (await self.db.execute(
-            select(LineageEdge).where(LineageEdge.org_id == org_id))).scalars().all()
+    async def graph(self, org_id: uuid.UUID, level: str = "table") -> dict:
+        stmt = select(LineageEdge).where(LineageEdge.org_id == org_id)
+        if level == "column":
+            stmt = stmt.where(LineageEdge.lineage_type == "column")
+        else:
+            stmt = stmt.where(LineageEdge.lineage_type != "column")
+        edges = (await self.db.execute(stmt)).scalars().all()
         node_ids = set()
         for e in edges:
             node_ids.add(e.source_asset_id)
@@ -125,7 +152,8 @@ class LineageService:
         if node_ids:
             rows = (await self.db.execute(select(Asset).where(Asset.id.in_(node_ids)))).scalars().all()
             nodes = [{"id": str(a.id), "name": a.name, "asset_type": a.asset_type,
-                      "sensitivity_level": a.sensitivity_level} for a in rows]
+                      "external_id": a.external_id, "sensitivity_level": a.sensitivity_level}
+                     for a in rows]
         return {"nodes": nodes,
                 "edges": [{"id": str(e.id), "source": str(e.source_asset_id),
                            "target": str(e.target_asset_id), "transformation": e.transformation_logic,

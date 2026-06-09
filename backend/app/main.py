@@ -24,6 +24,10 @@ async def lifespan(app: FastAPI):
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            # idempotent column add for existing DBs (create_all won't alter existing tables)
+            from sqlalchemy import text as _text
+            await conn.execute(_text(
+                "ALTER TABLE classification_results ADD COLUMN IF NOT EXISTS run_id uuid"))
         async with AsyncSessionLocal() as db:
             await run_bootstrap(db)
         logger.info("Startup: schema ready and defaults seeded.")

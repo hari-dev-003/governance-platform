@@ -4,7 +4,7 @@ from app.models.sources import DataSource  # noqa: F401
 from app.models.assets import Asset  # noqa: F401
 from app.models.lineage import LineageEdge  # noqa: F401
 from app.models.glossary import GlossaryTerm, TermAssetLink  # noqa: F401
-from app.models.classification import ClassificationRule, ClassificationResult  # noqa: F401
+from app.models.classification import ClassificationRule, ClassificationResult, ClassificationRun  # noqa: F401
 from app.models.quality import (  # noqa: F401
     QualityRule, QualityCheckRun, QualityCheckResult,
 )
@@ -20,7 +20,7 @@ from app.models.audit import AuditLog  # noqa: F401
 
 __all__ = [
     "Organization", "User", "DataSource", "Asset", "LineageEdge",
-    "GlossaryTerm", "TermAssetLink", "ClassificationRule", "ClassificationResult",
+    "GlossaryTerm", "TermAssetLink", "ClassificationRule", "ClassificationResult", "ClassificationRun",
     "QualityRule", "QualityCheckRun", "QualityCheckResult", "DataPolicy",
     "AccessRequest", "AIModel", "AIModelVersion", "RiskAssessment", "BiasTestRun",
     "MonitoringConfig", "DriftAlert", "ComplianceFramework", "ComplianceRequirement",

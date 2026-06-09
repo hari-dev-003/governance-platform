@@ -53,15 +53,23 @@ export const sourcesApi = {
 };
 
 export const assetsApi = {
+  search: async (params?: any) => (await api.get('/assets', { params })).data,
   list: async (params?: any) => (await api.get('/assets', { params })).data,
   get: async (id: string) => (await api.get(`/assets/${id}`)).data,
   columns: async (id: string) => (await api.get(`/assets/${id}/columns`)).data,
   lineage: async (id: string) => (await api.get(`/assets/${id}/lineage`)).data,
+  classifications: async (id: string) => (await api.get(`/assets/${id}/classifications`)).data,
+  sample: async (id: string) => (await api.get(`/assets/${id}/sample`)).data,
   update: async (id: string, p: any) => (await api.patch(`/assets/${id}`, p)).data,
 };
 
+export const catalogApi = {
+  overview: async () => (await api.get('/catalog/overview')).data,
+  facets: async () => (await api.get('/catalog/facets')).data,
+};
+
 export const lineageApi = {
-  graph: async () => (await api.get('/lineage/graph')).data,
+  graph: async (level: 'table' | 'column' = 'table') => (await api.get('/lineage/graph', { params: { level } })).data,
   rebuild: async () => (await api.post('/lineage/rebuild')).data,
   impact: async (id: string) => (await api.get(`/lineage/impact/${id}`)).data,
 };
@@ -78,12 +86,15 @@ export const classificationApi = {
   createRule: async (p: any) => (await api.post('/classification/rules', p)).data,
   run: async (sourceId: string) => (await api.post(`/classification/sources/${sourceId}/run`)).data,
   results: async () => (await api.get('/classification/results')).data,
+  runs: async () => (await api.get('/classification/runs')).data,
+  runFindings: async (runId: string) => (await api.get(`/classification/runs/${runId}/findings`)).data,
 };
 
 export const qualityApi = {
   rules: async (assetId: string) => (await api.get('/quality/rules', { params: { asset_id: assetId } })).data,
   createRule: async (p: any) => (await api.post('/quality/rules', p)).data,
   run: async (assetId: string) => (await api.post(`/quality/assets/${assetId}/run`)).data,
+  autogenerate: async (assetId: string) => (await api.post(`/quality/assets/${assetId}/autogenerate`)).data,
   runs: async (assetId: string) => (await api.get('/quality/runs', { params: { asset_id: assetId } })).data,
 };
 

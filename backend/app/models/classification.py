@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import uuid
 
-from sqlalchemy import Boolean, DateTime, Float, String, Text, text
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -33,6 +33,7 @@ class ClassificationResult(Base):
     id: Mapped[uuid.UUID] = pk_uuid()
     asset_id = fk_uuid("assets.id", ondelete="CASCADE")
     rule_id = fk_uuid("classification_rules.id")
+    run_id = fk_uuid("classification_runs.id", ondelete="CASCADE")
     detected_category: Mapped[str] = mapped_column(String(100), nullable=False)
     sensitivity_level: Mapped[str] = mapped_column(String(50), nullable=False)
     confidence_score: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -42,3 +43,16 @@ class ClassificationResult(Base):
     reviewed_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class ClassificationRun(Base):
+    __tablename__ = "classification_runs"
+
+    id: Mapped[uuid.UUID] = pk_uuid()
+    org_id = fk_uuid("organizations.id", ondelete="CASCADE")
+    source_id = fk_uuid("data_sources.id")
+    scan_type: Mapped[str] = mapped_column(String(30), nullable=False)   # classification | privacy
+    engine: Mapped[str] = mapped_column(String(40), nullable=False)      # rules | presidio
+    columns_scanned: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    total_findings: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    started_at: Mapped[datetime.datetime] = created_ts()
