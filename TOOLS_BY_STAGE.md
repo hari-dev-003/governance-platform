@@ -10,7 +10,7 @@ field so you can confirm which tool produced it.
 | Stage | Tool | Where (backend) | Frontend |
 |-------|------|-----------------|----------|
 | Cataloging | **Native RDBMS introspection** (no OpenMetadata) - reads `information_schema` directly via asyncpg / aiomysql / aioodbc | `connectors/databases/{postgresql,mysql,mssql}.py`, `services/catalog_service.py` | Sources -> Scan; Catalog |
-| Lineage | **sqlglot** (backend) + **React Flow** (frontend) | `connectors/etl/github_etl.py`, `services/lineage_service.py` | Lineage page |
+| Lineage | **sqlglot** + repo connector (any Git/GitHub/local) -> cross-connector resolver | `connectors/etl/parsers.py`, `connectors/etl/repo_connector.py`, `services/lineage_service.py` | Lineage page (Rebuild) |
 | Data Quality | **Great Expectations** | `services/quality_service.py` | Quality / Asset Detail |
 | Data Privacy | **Microsoft Presidio** (values for RDBMS, names elsewhere) | `services/privacy_service.py` | Privacy (PII) page |
 
@@ -36,7 +36,7 @@ field so you can confirm which tool produced it.
 ```bash
 cd backend
 uv sync                                        # installs core + all required engines
-uv run python -m spacy download en_core_web_sm # Presidio NLP model
+uv pip install https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl # Presidio NLP model
 ```
 
 > **All 14 connectors are included** in the core install (databases, lakes, warehouses, ETL,

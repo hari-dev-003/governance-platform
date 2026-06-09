@@ -26,6 +26,7 @@ class ConnectorType(str, enum.Enum):
     REDSHIFT = "redshift"
     # ETL
     GITHUB_ETL = "github_etl"
+    ETL_REPO = "etl_repo"
     # Model registries
     MLFLOW = "mlflow"
     SAGEMAKER = "sagemaker"
@@ -46,6 +47,7 @@ CONNECTOR_CATEGORY: Dict[ConnectorType, str] = {
     ConnectorType.BIGQUERY: "warehouse",
     ConnectorType.REDSHIFT: "warehouse",
     ConnectorType.GITHUB_ETL: "etl",
+    ConnectorType.ETL_REPO: "etl",
     ConnectorType.MLFLOW: "model_registry",
     ConnectorType.SAGEMAKER: "model_registry",
     ConnectorType.AZURE_ML: "model_registry",

@@ -160,7 +160,7 @@ alibi-detect) are installed automatically by `uv sync` in STEP 2.2. Presidio add
 needs a small spaCy model - run this once in **Terminal 1**:
 
 ```powershell
-uv run python -m spacy download en_core_web_sm
+uv pip install https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
 ```
 
 Every governance API response includes an `"engine"` field (e.g. `great_expectations`,
@@ -211,3 +211,18 @@ Open http://localhost:5173.
 | Backend API + Swagger | http://localhost:8000 (`/docs`) | Terminal 1 |
 | Frontend UI | http://localhost:5173 | Terminal 2 |
 | PostgreSQL | localhost:5432 (your Docker/WSL) | (already running) |
+
+---
+
+## STEP 6 (verify) — Run the end-to-end acceptance test
+
+With Postgres running and the backend deps installed (STEP 2), from `backend/`:
+
+```powershell
+uv run python scripts/acceptance_test.py
+```
+
+It exercises every stage with the real engines against your Postgres and checks every
+connector SDK, printing `PASS`/`FAIL` and the engine used for each (e.g. `great_expectations`,
+`presidio`, `fairlearn`, `shap+lime`, `evidently`, `alibi-detect:KSDrift`). A clean run ends with
+`Fully operational end-to-end`.

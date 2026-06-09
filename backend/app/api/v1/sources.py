@@ -24,7 +24,7 @@ router = APIRouter(prefix="/sources", tags=["sources"])
 
 # Per-connector credential vs. non-secret config split
 _SECRET_KEYS = {"password", "aws_secret_access_key", "aws_access_key_id", "service_account_json",
-                "connection_string", "client_secret", "github_token", "admin_password"}
+                "connection_string", "client_secret", "github_token", "admin_password", "auth_token"}
 
 
 class SourceIn(BaseModel):

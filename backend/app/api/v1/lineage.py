@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.deps import admin_or_steward
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.assets import Asset
@@ -15,6 +16,16 @@ from app.models.lineage import LineageEdge
 from app.services.lineage_service import LineageService
 
 router = APIRouter(prefix="/lineage", tags=["lineage"])
+
+
+@router.post("/rebuild")
+async def rebuild(db: AsyncSession = Depends(get_db), user: User = Depends(admin_or_steward)):
+    """Re-resolve lineage from all ETL scripts + FKs against the current catalog (all connectors)."""
+    from app.services import audit
+    result = await LineageService(db).rebuild_org_lineage(user.org_id)
+    await audit.record(db, org_id=user.org_id, user_id=user.id, action="lineage.rebuilt",
+                       resource_type="lineage", new_value=result)
+    return result
 
 
 @router.get("/graph")

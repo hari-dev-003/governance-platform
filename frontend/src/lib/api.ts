@@ -62,6 +62,7 @@ export const assetsApi = {
 
 export const lineageApi = {
   graph: async () => (await api.get('/lineage/graph')).data,
+  rebuild: async () => (await api.post('/lineage/rebuild')).data,
   impact: async (id: string) => (await api.get(`/lineage/impact/${id}`)).data,
 };
 

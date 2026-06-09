@@ -106,7 +106,7 @@ uv run uvicorn app.main:app --reload --port 8000   # start the API
 > single real engine per stage; each endpoint reports which `engine` ran. After `uv sync`:
 >
 > ```bash
-> uv run python -m spacy download en_core_web_sm     # Presidio NLP model
+> uv pip install https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl     # Presidio NLP model
 > ```
 > **All connectors are core** (databases, lakes, warehouses, ETL, model registries, IAM) -
 > but each only runs for a data source you configure with credentials (lazy-loaded on demand).

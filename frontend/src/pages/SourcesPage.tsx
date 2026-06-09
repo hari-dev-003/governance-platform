@@ -11,6 +11,7 @@ const CONFIG_HINTS: Record<string, string[]> = {
   redshift: ['host', 'port', 'database', 'username', 'password'],
   mlflow: ['tracking_uri'],
   github_etl: ['github_token', 'repo_name', 'branch', 'path'],
+  etl_repo: ['repo_kind', 'git_url', 'branch', 'subpath', 'auth_token'],
   keycloak: ['server_url', 'realm', 'admin_username', 'admin_password'],
 };
 

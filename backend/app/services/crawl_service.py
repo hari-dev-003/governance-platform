@@ -33,13 +33,10 @@ async def crawl_source(db: AsyncSession, source_id: uuid.UUID) -> dict:
     for asset in discovered:
         await catalog.upsert_asset(source, asset, ext_to_id)
 
-    # Pass 2: lineage from any assets that reported it
-    edges = 0
-    for asset in discovered:
-        if asset.raw_lineage:
-            transform_id = ext_to_id.get(asset.external_id)
-            if transform_id:
-                edges += await lineage.process_raw_lineage(source.org_id, transform_id, asset)
+    # Pass 2: resolve lineage across the WHOLE catalog (all connectors), using
+    # the qualified-name index. Works regardless of crawl order.
+    rebuild = await lineage.rebuild_org_lineage(source.org_id)
+    edges = rebuild["edges_created"]
 
     from datetime import datetime, timezone
     source.last_crawled_at = datetime.now(timezone.utc)

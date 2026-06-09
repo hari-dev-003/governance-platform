@@ -22,6 +22,7 @@ _REGISTRY: Dict[ConnectorType, Tuple[str, str]] = {
     ConnectorType.BIGQUERY: ("app.connectors.warehouses.bigquery", "BigQueryConnector"),
     ConnectorType.REDSHIFT: ("app.connectors.warehouses.redshift", "RedshiftConnector"),
     ConnectorType.GITHUB_ETL: ("app.connectors.etl.github_etl", "GitHubETLConnector"),
+    ConnectorType.ETL_REPO: ("app.connectors.etl.repo_connector", "EtlRepoConnector"),
     ConnectorType.MLFLOW: ("app.connectors.model_registries.mlflow_connector", "MLflowConnector"),
     ConnectorType.SAGEMAKER: ("app.connectors.model_registries.sagemaker", "SageMakerConnector"),
     ConnectorType.AZURE_ML: ("app.connectors.model_registries.azure_ml", "AzureMLConnector"),
