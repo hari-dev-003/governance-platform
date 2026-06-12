@@ -75,3 +75,21 @@ async def approve(assessment_id: uuid.UUID, db: AsyncSession = Depends(get_db),
     ra.approved_by = user.id
     await db.flush()
     return {"id": str(ra.id), "status": ra.status}
+
+
+@router.get("/{assessment_id}/report")
+async def report(assessment_id: uuid.UUID, db: AsyncSession = Depends(get_db),
+                 user: User = Depends(get_current_user)):
+    """Download the EU AI Act risk assessment as a PDF."""
+    from fastapi.responses import Response
+    from app.services.report_service import risk_assessment_pdf
+    ra = await db.get(RiskAssessment, assessment_id)
+    if not ra:
+        raise HTTPException(404, "assessment not found")
+    pdf = risk_assessment_pdf({
+        "risk_tier": ra.risk_tier, "eu_ai_act_category": ra.eu_ai_act_category,
+        "status": ra.status, "risk_factors": ra.risk_factors,
+        "required_actions": ra.required_actions,
+    })
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="risk-assessment-{assessment_id}.pdf"'})

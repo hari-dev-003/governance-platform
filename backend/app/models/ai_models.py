@@ -66,4 +66,6 @@ class AIModelVersion(Base):
     validated_by = fk_uuid("users.id")
     validated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     validation_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Persisted SHAP global feature importance from the last explainability run.
+    feature_importance: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime.datetime] = created_ts()

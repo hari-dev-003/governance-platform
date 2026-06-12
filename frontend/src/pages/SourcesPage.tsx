@@ -10,10 +10,26 @@ const CONFIG_HINTS: Record<string, string[]> = {
   aws_s3: ['aws_access_key_id', 'aws_secret_access_key', 'region'],
   redshift: ['host', 'port', 'database', 'username', 'password'],
   mlflow: ['tracking_uri'],
+  sagemaker: ['aws_access_key_id', 'aws_secret_access_key', 'region'],
+  vertex_ai: ['service_account_json', 'project_id', 'location'],
+  azure_ml: ['tenant_id', 'client_id', 'client_secret', 'subscription_id', 'resource_group', 'workspace_name'],
   github_etl: ['github_token', 'repo_name', 'branch', 'path'],
   etl_repo: ['repo_kind', 'local_path', 'git_url', 'branch', 'subpath', 'auth_token'],
   keycloak: ['server_url', 'realm', 'admin_username', 'admin_password'],
 };
+
+// One-line guidance shown under the form for each connector type.
+const CONNECTOR_HELP: Record<string, string> = {
+  mlflow: 'Tracking URI of your MLflow server, e.g. http://mlflow.mycorp.com:5000',
+  sagemaker: 'IAM access key with sagemaker:List/Describe permissions. Region e.g. us-east-1.',
+  vertex_ai: 'Paste the full service-account JSON key. project_id is your GCP project; location e.g. us-central1.',
+  azure_ml: 'Service-principal credentials (App registration) with Reader on the Azure ML workspace.',
+};
+
+// Fields rendered as a multi-line textarea (large pasted blobs like JSON keys).
+const TEXTAREA_FIELDS = new Set(['service_account_json']);
+const isSecret = (f: string) => /password|secret|token/.test(f);
+const prettyField = (f: string) => f.replace(/_/g, ' ');
 
 export default function SourcesPage() {
   const qc = useQueryClient();
@@ -77,11 +93,18 @@ export default function SourcesPage() {
           </div>
           <div className="grid md:grid-cols-2 gap-3 mb-3">
             {fields.map((f) => (
-              <input key={f} placeholder={f} type={f.includes('password') || f.includes('secret') ? 'password' : 'text'}
-                value={cfg[f] ?? ''} onChange={(e) => setCfg({ ...cfg, [f]: e.target.value })}
-                className="border border-slate-300 rounded-lg px-3 py-2" />
+              TEXTAREA_FIELDS.has(f) ? (
+                <textarea key={f} placeholder={prettyField(f)} rows={5}
+                  value={cfg[f] ?? ''} onChange={(e) => setCfg({ ...cfg, [f]: e.target.value })}
+                  className="border border-slate-300 rounded-lg px-3 py-2 md:col-span-2 font-mono text-xs" />
+              ) : (
+                <input key={f} placeholder={prettyField(f)} type={isSecret(f) ? 'password' : 'text'}
+                  value={cfg[f] ?? ''} onChange={(e) => setCfg({ ...cfg, [f]: e.target.value })}
+                  className="border border-slate-300 rounded-lg px-3 py-2" />
+              )
             ))}
           </div>
+          {CONNECTOR_HELP[ctype] && <p className="text-xs text-slate-500 mb-3">{CONNECTOR_HELP[ctype]}</p>}
           <Button onClick={() => create.mutate()} disabled={!name || create.isPending}>
             {create.isPending ? 'Saving…' : 'Save Connection'}
           </Button>

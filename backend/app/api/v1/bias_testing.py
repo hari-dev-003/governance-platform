@@ -16,6 +16,7 @@ from app.models.bias import BiasTestRun
 from app.models.identity import User
 from app.services import audit
 from app.services.bias_service import compute_group_metrics
+from app.services.dataset_loader import load_asset_rows
 
 router = APIRouter(prefix="/bias-tests", tags=["bias"])
 
@@ -26,21 +27,32 @@ class BiasTestIn(BaseModel):
     label_column: str = "label"
     prediction_column: str = "prediction"
     positive_label: str = "1"
-    # Inline evaluation records: [{protected_attribute, label, prediction}, ...]
-    records: list[dict]
+    # Either pass inline records, OR a catalog table asset to sample from.
+    records: list[dict] = []
+    test_dataset_id: uuid.UUID | None = None
 
 
 @router.post("", status_code=201)
 async def run_bias_test(payload: BiasTestIn, db: AsyncSession = Depends(get_db),
                         user: User = Depends(ai_governance)):
-    if not payload.records:
-        raise HTTPException(400, "records are required for bias evaluation")
+    records = payload.records
+    if not records and payload.test_dataset_id:
+        try:
+            records = await load_asset_rows(db, payload.test_dataset_id)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(400, f"could not load test dataset: {str(e)[:200]}")
+    if not records:
+        raise HTTPException(400, "provide records or a test_dataset_id with sampleable rows")
+    for need in (payload.protected_attribute, payload.label_column, payload.prediction_column):
+        if need not in records[0]:
+            raise HTTPException(400, f"column '{need}' not found in the dataset rows")
     metrics = compute_group_metrics(
-        payload.records, payload.protected_attribute, payload.label_column,
+        records, payload.protected_attribute, payload.label_column,
         payload.prediction_column, payload.positive_label,
     )
     run = BiasTestRun(
         model_version_id=payload.model_version_id, triggered_by=user.id,
+        test_dataset_id=payload.test_dataset_id,
         protected_attributes=[payload.protected_attribute], label_column=payload.label_column,
         prediction_column=payload.prediction_column, positive_label=payload.positive_label,
         status="completed", overall_bias_verdict=metrics["verdict"],
@@ -68,6 +80,24 @@ async def get_run(run_id: uuid.UUID, db: AsyncSession = Depends(get_db),
     return {"id": str(r.id), "verdict": r.overall_bias_verdict, "status": r.status,
             "demographic_parity": r.demographic_parity, "equal_opportunity": r.equal_opportunity,
             "predictive_parity": r.predictive_parity, "summary": r.summary_report}
+
+
+@router.get("/{run_id}/report")
+async def get_run_report(run_id: uuid.UUID, db: AsyncSession = Depends(get_db),
+                         user: User = Depends(get_current_user)):
+    """Download the bias test as a PDF report."""
+    from fastapi.responses import Response
+    from app.services.report_service import bias_report_pdf
+    r = await db.get(BiasTestRun, run_id)
+    if not r:
+        raise HTTPException(404, "run not found")
+    pdf = bias_report_pdf({
+        "verdict": r.overall_bias_verdict, "status": r.status, "summary": r.summary_report,
+        "demographic_parity": r.demographic_parity, "equal_opportunity": r.equal_opportunity,
+        "predictive_parity": r.predictive_parity,
+    })
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="bias-report-{run_id}.pdf"'})
 
 
 @router.get("")

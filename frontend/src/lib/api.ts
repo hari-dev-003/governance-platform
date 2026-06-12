@@ -102,27 +102,48 @@ export const accessApi = {
   review: async (id: string, p: any) => (await api.post(`/access-requests/${id}/review`, p)).data,
 };
 
+// Download a binary (PDF) response and save it via a temporary object URL.
+async function download(url: string, filename: string) {
+  const res = await api.get(url, { responseType: 'blob' });
+  const href = URL.createObjectURL(res.data as Blob);
+  const a = document.createElement('a');
+  a.href = href; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(href);
+}
+
 export const modelsApi = {
   list: async () => (await api.get('/ai-models')).data,
   get: async (id: string) => (await api.get(`/ai-models/${id}`)).data,
   create: async (p: any) => (await api.post('/ai-models', p)).data,
+  sync: async (sourceId: string) => (await api.post(`/ai-models/sync/${sourceId}`)).data,
   versions: async (id: string) => (await api.get(`/ai-models/${id}/versions`)).data,
   addVersion: async (id: string, p: any) => (await api.post(`/ai-models/${id}/versions`, p)).data,
+  validateVersion: async (id: string, vid: string, p: any) =>
+    (await api.post(`/ai-models/${id}/versions/${vid}/validate`, p)).data,
+  lineage: async (id: string) => (await api.get(`/ai-models/${id}/lineage`)).data,
   card: async (id: string) => (await api.get(`/ai-models/${id}/card`)).data,
+  downloadCard: async (id: string) => download(`/ai-models/${id}/card.pdf`, `model-card-${id}.pdf`),
 };
 
 export const riskApi = {
   questionnaire: async () => (await api.get('/risk-assessment/questionnaire')).data,
   submit: async (p: any) => (await api.post('/risk-assessment', p)).data,
+  approve: async (id: string) => (await api.post(`/risk-assessment/${id}/approve`)).data,
+  downloadReport: async (id: string) => download(`/risk-assessment/${id}/report`, `risk-assessment-${id}.pdf`),
 };
 
 export const biasApi = {
   list: async () => (await api.get('/bias-tests')).data,
   run: async (p: any) => (await api.post('/bias-tests', p)).data,
+  downloadReport: async (id: string) => download(`/bias-tests/${id}/report`, `bias-report-${id}.pdf`),
 };
 
 export const explainApi = {
   explain: async (p: any) => (await api.post('/explainability/explain', p)).data,
+  featureImportance: async (vid: string) => (await api.get(`/explainability/feature-importance/${vid}`)).data,
+  computeFeatureImportance: async (vid: string, p: any) =>
+    (await api.post(`/explainability/versions/${vid}/feature-importance`, p)).data,
 };
 
 export const monitoringApi = {
@@ -130,6 +151,12 @@ export const monitoringApi = {
   driftCheck: async (p: any) => (await api.post('/monitoring/drift-check', p)).data,
   evidentlyReport: async (p: any) => (await api.post('/monitoring/evidently-report', p)).data,
   acknowledge: async (id: string) => (await api.post(`/monitoring/alerts/${id}/acknowledge`)).data,
+  configs: async (versionId?: string) =>
+    (await api.get('/monitoring/configs', { params: versionId ? { model_version_id: versionId } : {} })).data,
+  createConfig: async (p: any) => (await api.post('/monitoring/configs', p)).data,
+  updateConfig: async (id: string, p: any) => (await api.patch(`/monitoring/configs/${id}`, p)).data,
+  deleteConfig: async (id: string) => (await api.delete(`/monitoring/configs/${id}`)).data,
+  runAll: async () => (await api.post('/monitoring/run-all')).data,
 };
 
 export const complianceApi = {

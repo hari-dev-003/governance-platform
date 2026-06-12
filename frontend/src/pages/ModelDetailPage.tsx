@@ -13,10 +13,19 @@ export default function ModelDetailPage() {
   const { data: versions } = useQuery({ queryKey: ['versions', id], queryFn: () => modelsApi.versions(id) });
   const { data: quiz } = useQuery({ queryKey: ['quiz'], queryFn: riskApi.questionnaire });
 
+  const { data: mlineage } = useQuery({ queryKey: ['mlineage', id], queryFn: () => modelsApi.lineage(id) });
+
   const [responses, setResponses] = useState<Record<string, boolean>>({});
   const [riskResult, setRiskResult] = useState<any>(null);
   const submitRisk = useMutation({ mutationFn: () => riskApi.submit({ model_id: id, responses }),
     onSuccess: (r) => { setRiskResult(r); qc.invalidateQueries({ queryKey: ['model', id] }); } });
+
+  // version validation / promotion
+  const validateVersion = useMutation({
+    mutationFn: ({ vid, decision, stage }: { vid: string; decision: string; stage?: string }) =>
+      modelsApi.validateVersion(id, vid, { decision, stage }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['versions', id] }),
+  });
 
   const [biasResult, setBiasResult] = useState<any>(null);
   const runBias = useMutation({
@@ -50,7 +59,12 @@ export default function ModelDetailPage() {
   return (
     <div>
       <PageHeader title={model.name} subtitle={`${model.model_type} · ${model.framework ?? ''} · ${model.business_domain ?? ''}`}
-        actions={<Link to="/ai-models"><Button variant="ghost">← Registry</Button></Link>} />
+        actions={
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => modelsApi.downloadCard(id)}>Download model card (PDF)</Button>
+            <Link to="/ai-models"><Button variant="ghost">← Registry</Button></Link>
+          </div>
+        } />
       <div className="flex gap-2 mb-6">
         {TABS.map(([k, label]) => (
           <button key={k} onClick={() => setTab(k as any)}
@@ -63,17 +77,37 @@ export default function ModelDetailPage() {
           <Card className="p-5 md:col-span-2">
             <h3 className="font-semibold mb-3">Versions</h3>
             {versions?.length ? (
-              <Table head={['Version', 'Stage', 'Accuracy', 'Validation']}>
+              <Table head={['Version', 'Stage', 'Accuracy', 'Validation', 'Actions']}>
                 {versions.map((v: any) => (
                   <tr key={v.id} className="border-b border-slate-100">
                     <td className="py-2 px-3">{v.version_number}</td>
                     <td className="py-2 px-3"><Badge>{v.stage}</Badge></td>
                     <td className="py-2 px-3">{v.metrics?.accuracy ?? '—'}</td>
                     <td className="py-2 px-3"><Badge>{v.validation_status}</Badge></td>
+                    <td className="py-2 px-3">
+                      <div className="flex gap-1 flex-wrap">
+                        <Button variant="ghost" onClick={() => validateVersion.mutate({ vid: v.id, decision: 'approved', stage: 'production' })}>Approve→Prod</Button>
+                        <Button variant="ghost" onClick={() => validateVersion.mutate({ vid: v.id, decision: 'rejected' })}>Reject</Button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </Table>
-            ) : <Empty message="No versions. Add one via the API or registry." />}
+            ) : <Empty message="No versions. Add one via the API or registry sync." />}
+
+            {mlineage?.versions?.some((v: any) => v.training_datasets?.length) && (
+              <div className="mt-5">
+                <h4 className="font-medium text-sm mb-2">Training-data lineage</h4>
+                <ul className="text-sm space-y-1">
+                  {mlineage.versions.map((v: any) => v.training_datasets?.length ? (
+                    <li key={v.id} className="text-slate-600">
+                      <span className="font-medium">v{v.version_number}</span>
+                      {' ← '}{v.training_datasets.map((d: any) => d.name).join(', ')}
+                    </li>
+                  ) : null)}
+                </ul>
+              </div>
+            )}
           </Card>
           <Card className="p-5">
             <h3 className="font-semibold mb-3">Governance</h3>
@@ -117,7 +151,8 @@ export default function ModelDetailPage() {
           {biasResult && (
             <div className="mt-4">
               <div className="flex items-center gap-2 mb-3"><span className="font-semibold">Verdict:</span><Badge>{biasResult.verdict}</Badge>
-                <span className="text-xs text-slate-500">engine: {biasResult.engine}</span></div>
+                <span className="text-xs text-slate-500">engine: {biasResult.engine}</span>
+                {biasResult.id && <Button variant="ghost" onClick={() => biasApi.downloadReport(biasResult.id)}>Download report (PDF)</Button>}</div>
               <EChart height={280} option={{
                 tooltip: {}, legend: { bottom: 0 }, xAxis: { type: 'category', data: biasResult.groups },
                 yAxis: { type: 'value', max: 1 },

@@ -26,9 +26,21 @@ export default function MonitoringPage() {
     onSuccess: (r) => { setKs(r); qc.invalidateQueries({ queryKey: ['alerts'] }); },
   });
 
+  const [sweep, setSweep] = useState<any>(null);
+  const runAll = useMutation({
+    mutationFn: () => monitoringApi.runAll(),
+    onSuccess: (r) => { setSweep(r); qc.invalidateQueries({ queryKey: ['alerts'] }); },
+  });
+
   return (
     <div>
-      <PageHeader title="Model Monitoring" subtitle="Evidently AI reports + alibi-detect drift detection" />
+      <PageHeader title="Model Monitoring" subtitle="Evidently AI reports + alibi-detect drift detection"
+        actions={
+          <div className="flex items-center gap-3">
+            {sweep && <span className="text-xs text-slate-500">swept {sweep.checked}/{sweep.active_configs} · {sweep.alerts_raised} alert(s)</span>}
+            <Button variant="ghost" onClick={() => runAll.mutate()} disabled={runAll.isPending}>{runAll.isPending ? 'Running…' : 'Run all monitors'}</Button>
+          </div>
+        } />
       <div className="grid md:grid-cols-2 gap-6 mb-6">
         <Card className="p-5">
           <h3 className="font-semibold mb-1">Evidently AI - Data Drift Report</h3>

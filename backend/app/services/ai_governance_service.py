@@ -1,5 +1,13 @@
-"""AI governance — EU AI Act risk scoring and model-card generation."""
+"""AI governance — EU AI Act risk scoring, model-card generation, registry sync."""
 from __future__ import annotations
+
+import uuid
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.ai_models import AIModel, AIModelVersion
+from app.models.assets import Asset
 
 # A compact EU-AI-Act-inspired questionnaire. Each answer carries a weight; the
 # aggregate maps to a risk tier with mandated follow-up actions.
@@ -69,3 +77,89 @@ def model_card(model: dict, versions: list[dict], assessment: dict | None) -> di
         "intended_use": model.get("use_case"),
         "ethical_considerations": (assessment or {}).get("risk_factors", []),
     }
+
+
+# ---------------------------------------------------------------------------
+# Registry sync: promote crawled ml_model / ml_model_version assets (MLflow,
+# SageMaker, Vertex, Azure ML) from the catalog into the AI model registry.
+# ---------------------------------------------------------------------------
+def _meta_get(meta: dict, *keys, default=None):
+    for k in keys:
+        if isinstance(meta, dict) and meta.get(k) not in (None, ""):
+            return meta[k]
+    return default
+
+
+async def sync_models_from_source(db: AsyncSession, org_id: uuid.UUID,
+                                  source_id: uuid.UUID) -> dict:
+    """Upsert AIModel/AIModelVersion rows from the source's discovered model assets.
+
+    Reads Asset rows of type ``ml_model`` / ``ml_model_version`` (written by the
+    model-registry crawlers) and mirrors them into the governance registry,
+    carrying source_id, metrics, hyperparameters and artifact/version ids. Safe to
+    re-run: it matches on (org_id, external_id) for models and (model_id,
+    version_number) for versions.
+    """
+    assets = list((await db.execute(
+        select(Asset).where(
+            Asset.org_id == org_id, Asset.source_id == source_id,
+            Asset.asset_type.in_(("ml_model", "ml_model_version")),
+        )
+    )).scalars().all())
+
+    model_assets = [a for a in assets if a.asset_type == "ml_model"]
+    version_assets = [a for a in assets if a.asset_type == "ml_model_version"]
+
+    # external_id of the parent ml_model asset -> AIModel row
+    ext_to_model: dict[str, AIModel] = {}
+    models_synced = 0
+    for a in model_assets:
+        meta = a.technical_metadata or {}
+        existing = (await db.execute(
+            select(AIModel).where(AIModel.org_id == org_id, AIModel.external_id == a.external_id)
+        )).scalar_one_or_none()
+        if existing is None:
+            existing = AIModel(org_id=org_id, external_id=a.external_id, name=a.name)
+            db.add(existing)
+            models_synced += 1
+        existing.source_id = source_id
+        existing.name = a.name
+        existing.description = _meta_get(meta, "description") or existing.description
+        existing.framework = _meta_get(meta, "framework",
+                                       default=_meta_get(meta.get("tags", {}) or {}, "framework")) or existing.framework
+        existing.model_type = _meta_get(meta, "model_type",
+                                        default=_meta_get(meta.get("tags", {}) or {}, "model_type")) or existing.model_type
+        await db.flush()
+        ext_to_model[a.external_id] = existing
+
+    # map a version asset's parent (Asset.id) back to its ml_model external_id
+    asset_id_to_ext = {a.id: a.external_id for a in model_assets}
+
+    versions_synced = 0
+    for a in version_assets:
+        meta = a.technical_metadata or {}
+        parent_ext = asset_id_to_ext.get(a.parent_id)
+        model = ext_to_model.get(parent_ext)
+        if model is None:
+            continue
+        version_number = str(_meta_get(meta, "version", default=a.external_id.rsplit("/", 1)[-1]))
+        run = meta.get("run_details") or {}
+        existing = (await db.execute(
+            select(AIModelVersion).where(
+                AIModelVersion.model_id == model.id,
+                AIModelVersion.version_number == version_number,
+            )
+        )).scalar_one_or_none()
+        if existing is None:
+            existing = AIModelVersion(model_id=model.id, version_number=version_number)
+            db.add(existing)
+            versions_synced += 1
+        existing.external_version_id = a.external_id
+        existing.metrics = run.get("metrics") or existing.metrics or {}
+        existing.hyperparameters = run.get("params") or existing.hyperparameters or {}
+        existing.stage = _meta_get(meta, "stage", default=existing.stage or "development")
+        await db.flush()
+
+    return {"source_id": str(source_id), "models_synced": models_synced,
+            "versions_synced": versions_synced,
+            "models_total": len(model_assets), "versions_total": len(version_assets)}

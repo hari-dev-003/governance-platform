@@ -16,6 +16,10 @@ class MonitoringConfig(Base):
 
     id: Mapped[uuid.UUID] = pk_uuid()
     model_version_id = fk_uuid("ai_model_versions.id", ondelete="CASCADE")
+    # Datasets the scheduled monitor compares (reference baseline vs current window).
+    # SET NULL on delete so removing a dataset never breaks a monitor or the source cascade.
+    reference_dataset_id = fk_uuid("assets.id", ondelete="SET NULL")
+    current_dataset_id = fk_uuid("assets.id", ondelete="SET NULL")
     endpoint_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     check_interval_minutes: Mapped[int] = mapped_column(Integer, server_default=text("60"))
     psi_threshold: Mapped[float] = mapped_column(Float, server_default=text("0.2"))

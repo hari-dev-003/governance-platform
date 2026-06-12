@@ -1,4 +1,8 @@
-"""AWS SageMaker model registry connector (lazy-imports boto3)."""
+"""AWS SageMaker model registry connector (lazy-imports boto3).
+
+Discovers model package groups (-> ml_model), each group's model packages
+(-> ml_model_version), and inference endpoints (-> ml_deployment).
+"""
 from __future__ import annotations
 
 from typing import List, Optional
@@ -29,16 +33,41 @@ class SageMakerConnector(BaseConnector):
         client = self._client()
         assets: List[DiscoveredAsset] = []
         for page in client.get_paginator("list_model_package_groups").paginate():
-            for g in page["ModelPackageGroupSummaryList"]:
-                gid = f"sagemaker://model-groups/{g['ModelPackageGroupName']}"
-                assets.append(DiscoveredAsset(external_id=gid, name=g["ModelPackageGroupName"],
-                                              asset_type="ml_model",
-                                              metadata={"status": g["ModelPackageGroupStatus"]}))
-        for page in client.get_paginator("list_endpoints").paginate():
-            for ep in page["Endpoints"]:
-                assets.append(DiscoveredAsset(external_id=f"sagemaker://endpoints/{ep['EndpointName']}",
-                                              name=ep["EndpointName"], asset_type="ml_deployment",
-                                              metadata={"status": ep["EndpointStatus"]}))
+            for g in page.get("ModelPackageGroupSummaryList", []):
+                gname = g["ModelPackageGroupName"]
+                gid = f"sagemaker://model-groups/{gname}"
+                assets.append(DiscoveredAsset(
+                    external_id=gid, name=gname, asset_type="ml_model",
+                    metadata={"status": g.get("ModelPackageGroupStatus"),
+                              "description": g.get("ModelPackageGroupDescription")}))
+                # versions = model packages inside the group
+                try:
+                    for vp in client.get_paginator("list_model_packages").paginate(
+                            ModelPackageGroupName=gname):
+                        for p in vp.get("ModelPackageSummaryList", []):
+                            ver = str(p.get("ModelPackageVersion") or "")
+                            if not ver:
+                                continue
+                            assets.append(DiscoveredAsset(
+                                external_id=f"{gid}/versions/{ver}", name=f"{gname} v{ver}",
+                                asset_type="ml_model_version", parent_id=gid,
+                                metadata={"version": ver,
+                                          "stage": p.get("ModelApprovalStatus"),
+                                          "status": p.get("ModelPackageStatus"),
+                                          "arn": p.get("ModelPackageArn"),
+                                          "run_details": {"metrics": {}, "params": {}}}))
+                except Exception:  # noqa: BLE001
+                    pass
+        # production endpoints
+        try:
+            for page in client.get_paginator("list_endpoints").paginate():
+                for ep in page.get("Endpoints", []):
+                    assets.append(DiscoveredAsset(
+                        external_id=f"sagemaker://endpoints/{ep['EndpointName']}",
+                        name=ep["EndpointName"], asset_type="ml_deployment",
+                        metadata={"status": ep.get("EndpointStatus")}))
+        except Exception:  # noqa: BLE001
+            pass
         return assets
 
     async def get_asset_details(self, external_id: str) -> Optional[DiscoveredAsset]:
