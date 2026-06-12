@@ -7,10 +7,8 @@ import SourcesPage from './pages/SourcesPage';
 import CatalogPage from './pages/CatalogPage';
 import AssetDetailPage from './pages/AssetDetailPage';
 import LineagePage from './pages/LineagePage';
-import GlossaryPage from './pages/GlossaryPage';
 import ClassificationPage from './pages/ClassificationPage';
 import QualityPage from './pages/QualityPage';
-import PoliciesPage from './pages/PoliciesPage';
 import AccessPage from './pages/AccessPage';
 import ModelRegistryPage from './pages/ModelRegistryPage';
 import ModelDetailPage from './pages/ModelDetailPage';
@@ -32,10 +30,8 @@ export default function App() {
                 <Route path="/catalog" element={<CatalogPage />} />
                 <Route path="/catalog/:id" element={<AssetDetailPage />} />
                 <Route path="/lineage" element={<LineagePage />} />
-                <Route path="/glossary" element={<GlossaryPage />} />
                 <Route path="/classification" element={<ClassificationPage />} />
                 <Route path="/quality" element={<QualityPage />} />
-                <Route path="/policies" element={<PoliciesPage />} />
                 <Route path="/access" element={<AccessPage />} />
                 <Route path="/ai-models" element={<ModelRegistryPage />} />
                 <Route path="/ai-models/:id" element={<ModelDetailPage />} />

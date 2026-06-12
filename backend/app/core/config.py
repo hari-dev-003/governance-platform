@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     DEFAULT_ORG_NAME: str = "Default Organization"
     DEFAULT_ORG_SLUG: str = "default"
 
+    # ---- OpenLineage ingestion ----
+    OPENLINEAGE_API_KEY: str = ""
+
     # ---- CORS ----
     FRONTEND_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
 

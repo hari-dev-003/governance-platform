@@ -12,11 +12,17 @@ ETL repo  ──parse──►  source→target references  ──resolve──�
                                                                                             + script as transformation)
 ```
 
-1. **Parse** (`connectors/etl/parsers.py`): each script becomes `{sources, targets}` edges.
-   - SQL → sqlglot extracts `INSERT…SELECT` / `CREATE TABLE AS` / `MERGE` source & target tables
-     (qualified, e.g. `shop.orders`, `project.dataset.table`).
-   - dbt → `ref()` / `source()` dependencies.
-   - Airflow → task deps + any embedded SQL.
+1. **Parse** (`connectors/etl/parsers.py`) — enterprise-style static code parsing; each script
+   becomes `{sources, targets}` edges:
+   - **SQL** → sqlglot extracts `INSERT…SELECT` / `CREATE TABLE AS` / `MERGE` (table **and column** level).
+   - **dbt** → `ref()` / `source()` dependencies.
+   - **Airflow** → task deps + embedded SQL.
+   - **Spark / PySpark** (`.py`) → AST analyzer with **variable-provenance tracking**: JDBC
+     reads/writes (`.option("dbtable",…)`, `.jdbc()`), `saveAsTable`/`insertInto`, and helper
+     functions — each output binds to the exact source tables it was derived from (table level).
+   - **Parquet / CSV / JSON & pandas** → file I/O (`spark.read.parquet`, `df.write.parquet`,
+     `pd.read_parquet`, `to_parquet`, …) traced as file datasets.
+   - **Column-level for Spark DataFrames** → captured at runtime via **OpenLineage**.
 2. **Resolve** (`services/lineage_service.py`): a qualified-name index over **all** assets'
    `external_id` + `name`. A reference is matched by the longest unambiguous suffix, with a
    **confidence score** (1.0 exact `db.schema.table` → 0.9 qualified → 0.7 unique name → 0.4

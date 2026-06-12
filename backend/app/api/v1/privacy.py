@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,7 +13,7 @@ from app.core.security import get_current_user
 from app.models.classification import ClassificationResult
 from app.models.identity import User
 from app.services import audit
-from app.services.privacy_service import PrivacyService
+from app.services.privacy_service import PrivacyService, SpacyModelMissing
 
 router = APIRouter(prefix="/privacy", tags=["privacy"])
 
@@ -21,7 +21,11 @@ router = APIRouter(prefix="/privacy", tags=["privacy"])
 @router.post("/sources/{source_id}/scan")
 async def scan(source_id: uuid.UUID, db: AsyncSession = Depends(get_db),
                user: User = Depends(admin_or_steward)):
-    result = await PrivacyService(db).scan_source(user.org_id, source_id)
+    try:
+        result = await PrivacyService(db).scan_source(user.org_id, source_id)
+    except SpacyModelMissing as exc:
+        # 503: the service is correctly wired but a one-time model install is needed.
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     await audit.record(db, org_id=user.org_id, user_id=user.id, action="privacy.scan",
                        resource_type="data_source", resource_id=str(source_id),
                        new_value={"findings": result.get("findings"), "engine": result.get("engine")})

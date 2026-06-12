@@ -53,10 +53,39 @@ _SENS = ["public", "internal", "confidential", "restricted"]
 _SAMPLE_CATEGORIES = {"database", "warehouse"}
 
 
+SPACY_MODEL = "en_core_web_sm"
+
+
+class SpacyModelMissing(RuntimeError):
+    """Raised when the required spaCy model isn't installed in the venv.
+
+    We surface this explicitly instead of letting Presidio fall back to
+    ``spacy.cli.download`` — that shells out to ``pip``, which doesn't exist in a
+    uv-managed virtualenv, and hard-exits the worker with ``SystemExit: 1``.
+    """
+
+    INSTALL_HINT = (
+        "spaCy model 'en_core_web_sm' is not installed. Install it into the backend "
+        "venv (uv venvs have no pip, so install the wheel directly): "
+        "cd backend && uv pip install https://github.com/explosion/spacy-models/releases/"
+        "download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl"
+    )
+
+    def __init__(self) -> None:
+        super().__init__(self.INSTALL_HINT)
+
+
 def _build_analyzer():
+    import spacy
     from presidio_analyzer import AnalyzerEngine
     from presidio_analyzer.nlp_engine import NlpEngineProvider
-    cfg = {"nlp_engine_name": "spacy", "models": [{"lang_code": "en", "model_name": "en_core_web_sm"}]}
+
+    # Verify the model is present BEFORE handing control to Presidio, whose
+    # auto-download path needs pip and crashes the process in a uv venv.
+    if not spacy.util.is_package(SPACY_MODEL):
+        raise SpacyModelMissing()
+
+    cfg = {"nlp_engine_name": "spacy", "models": [{"lang_code": "en", "model_name": SPACY_MODEL}]}
     nlp = NlpEngineProvider(nlp_configuration=cfg).create_engine()
     return AnalyzerEngine(nlp_engine=nlp, supported_languages=["en"])
 

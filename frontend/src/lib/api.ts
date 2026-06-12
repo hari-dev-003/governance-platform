@@ -74,13 +74,6 @@ export const lineageApi = {
   impact: async (id: string) => (await api.get(`/lineage/impact/${id}`)).data,
 };
 
-export const glossaryApi = {
-  list: async () => (await api.get('/glossary')).data,
-  create: async (p: any) => (await api.post('/glossary', p)).data,
-  submit: async (id: string) => (await api.post(`/glossary/${id}/submit`)).data,
-  approve: async (id: string) => (await api.post(`/glossary/${id}/approve`)).data,
-};
-
 export const classificationApi = {
   rules: async () => (await api.get('/classification/rules')).data,
   createRule: async (p: any) => (await api.post('/classification/rules', p)).data,
@@ -101,11 +94,6 @@ export const qualityApi = {
 export const privacyApi = {
   scan: async (sourceId: string) => (await api.post(`/privacy/sources/${sourceId}/scan`)).data,
   findings: async () => (await api.get('/privacy/findings')).data,
-};
-
-export const policiesApi = {
-  list: async () => (await api.get('/policies')).data,
-  create: async (p: any) => (await api.post('/policies', p)).data,
 };
 
 export const accessApi = {

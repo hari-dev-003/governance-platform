@@ -11,7 +11,7 @@ const CONFIG_HINTS: Record<string, string[]> = {
   redshift: ['host', 'port', 'database', 'username', 'password'],
   mlflow: ['tracking_uri'],
   github_etl: ['github_token', 'repo_name', 'branch', 'path'],
-  etl_repo: ['repo_kind', 'git_url', 'branch', 'subpath', 'auth_token'],
+  etl_repo: ['repo_kind', 'local_path', 'git_url', 'branch', 'subpath', 'auth_token'],
   keycloak: ['server_url', 'realm', 'admin_username', 'admin_password'],
 };
 
@@ -25,6 +25,7 @@ export default function SourcesPage() {
   const [ctype, setCtype] = useState('postgresql');
   const [cfg, setCfg] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState('');
+  const [confirmId, setConfirmId] = useState<string | null>(null);
 
   const create = useMutation({
     mutationFn: () => sourcesApi.create({ name, connector_type: ctype, config: coerce(cfg) }),
@@ -34,8 +35,21 @@ export default function SourcesPage() {
     onSuccess: (r: any) => setMsg(r.success ? `✓ ${r.message}` : `✗ ${r.message}`) });
   const crawl = useMutation({ mutationFn: (id: string) => sourcesApi.crawl(id),
     onSuccess: (r: any) => setMsg(r.message) });
-  const remove = useMutation({ mutationFn: (id: string) => sourcesApi.remove(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['sources'] }) });
+  const remove = useMutation({
+    mutationFn: (id: string) => sourcesApi.remove(id),
+    onSuccess: () => {
+      // A source delete cascades across catalog, lineage, classification, etc.,
+      // so refresh everything rather than a single query.
+      qc.invalidateQueries();
+      setConfirmId(null);
+      setMsg('Source deleted, along with all its assets, lineage and results.');
+    },
+    onError: (e: any) => {
+      setConfirmId(null);
+      setMsg('Delete failed: ' + (e?.response?.data?.detail ?? e?.message ?? 'unknown error'));
+    },
+  });
+  const confirmSource = sources?.find((s: any) => s.id === confirmId);
 
   function coerce(c: Record<string, string>) {
     const out: any = { ...c };
@@ -87,13 +101,33 @@ export default function SourcesPage() {
                 <td className="py-2 px-3 flex gap-2">
                   <Button variant="ghost" onClick={() => test.mutate(s.id)}>Test</Button>
                   <Button variant="ghost" onClick={() => crawl.mutate(s.id)}>Scan</Button>
-                  <Button variant="danger" onClick={() => remove.mutate(s.id)}>Delete</Button>
+                  <Button variant="danger" onClick={() => setConfirmId(s.id)}>Delete</Button>
                 </td>
               </tr>
             ))}
           </Table>
         ) : <Empty message="No sources yet. Add your first connection." />}
       </Card>
+
+      {confirmSource && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4"
+          onClick={() => !remove.isPending && setConfirmId(null)}>
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-slate-900">Delete “{confirmSource.name}”?</h3>
+            <p className="text-sm text-slate-500 mt-2">
+              This permanently removes the source and everything derived from it — all
+              catalogued assets, lineage edges, classification results, quality checks and
+              any registered models. This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2 mt-5">
+              <Button variant="ghost" onClick={() => setConfirmId(null)} disabled={remove.isPending}>Cancel</Button>
+              <Button variant="danger" onClick={() => remove.mutate(confirmSource.id)} disabled={remove.isPending}>
+                {remove.isPending ? 'Deleting…' : 'Delete source'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

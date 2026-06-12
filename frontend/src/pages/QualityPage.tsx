@@ -10,7 +10,9 @@ const DIM: Record<string, string> = {
 
 export default function QualityPage() {
   const qc = useQueryClient();
-  const { data: tables } = useQuery({ queryKey: ['qtables'], queryFn: () => assetsApi.list({ type: 'table', limit: 200 }) });
+  // /assets returns a paginated object { total, limit, offset, items }, not a bare array.
+  const { data: tableRes } = useQuery({ queryKey: ['qtables'], queryFn: () => assetsApi.list({ type: 'table', limit: 200 }) });
+  const tables = tableRes?.items ?? [];
   const [sel, setSel] = useState<any>(null);
 
   const { data: columns } = useQuery({ queryKey: ['qcols', sel?.id], queryFn: () => assetsApi.columns(sel.id), enabled: !!sel });

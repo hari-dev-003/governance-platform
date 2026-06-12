@@ -19,6 +19,7 @@ from app.models.identity import User
 from app.models.sources import DataSource
 from app.services import audit
 from app.services.crawl_service import crawl_source
+from app.services.source_service import delete_source_cascade
 
 router = APIRouter(prefix="/sources", tags=["sources"])
 
@@ -138,6 +139,16 @@ async def delete_source(source_id: uuid.UUID, db: AsyncSession = Depends(get_db)
     src = await db.get(DataSource, source_id)
     if not src or src.org_id != user.org_id:
         raise HTTPException(404, "source not found")
-    await db.delete(src)
-    await audit.record(db, org_id=user.org_id, user_id=user.id, action="source.deleted",
-                       resource_type="data_source", resource_id=str(source_id), resource_name=src.name)
+    source_name = src.name
+    removed = await delete_source_cascade(db, src)
+    await audit.record(
+        db,
+        org_id=user.org_id,
+        user_id=user.id,
+        action="source.deleted",
+        resource_type="data_source",
+        resource_id=str(source_id),
+        resource_name=source_name,
+        new_value=removed,
+    )
+    return None

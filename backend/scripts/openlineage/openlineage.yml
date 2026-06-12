@@ -1,0 +1,9 @@
+# OpenLineage client config — events go ONLY to your governance platform.
+# Used by Airflow / dbt / Python via:  export OPENLINEAGE_CONFIG=/path/to/openlineage.yml
+transport:
+  type: http
+  url: http://localhost:8000/api/v1
+  endpoint: /lineage/openlineage
+  auth:
+    type: api_key
+    apiKey: my-secret-key          # must equal OPENLINEAGE_API_KEY in backend/.env (blank = no auth)
